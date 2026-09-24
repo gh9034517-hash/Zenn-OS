@@ -140,6 +140,8 @@ const DEMO_SUFFIXES = [
   'Central', 'do Bairro', 'Premium', 'Express', 'da Praça', 'Família', 'Artesanal', 'Prime',
   'Nova Era', 'Tradição', 'Top', 'Master', 'da Vila', 'Real', 'Imperial', 'Primavera',
   'Estação', 'Ponto Certo', 'Bom Gosto', 'Villa', 'Mix', 'Point', 'Clássica', 'Moderna',
+  'Aurora', 'Horizonte', 'Jardim', 'Paulista', 'Brasil', 'Dom Pedro', 'Bela Vista', 'Da Esquina',
+  'Gourmet', 'Império', 'São José', 'Santa Rita', 'Vitória', 'Esperança', 'Boa Vista', 'Norte',
 ]
 const DEMO_NEIGHBORHOODS = ['Cambuí', 'Centro', 'Taquaral', 'Barão Geraldo', 'Guanabara', 'Castelo', 'Botafogo', 'Nova Campinas', 'Jardim Proença', 'Vila Industrial']
 
@@ -163,7 +165,7 @@ export function generateDemoPlaces(params: SearchParams): PlaceResult[] {
 
   return Array.from({ length: count }, (_, i) => {
     const suffix = suffixes[i % suffixes.length]
-    const name = i % 3 === 0 ? `${suffix} ${category}` : `${category} ${suffix}`
+    const name = `${category} ${suffix}`
     const s = slug(`${name}${city}`)
     // ~60% sem site para exercitar o filtro SEM SITE
     const hasSite = rand() > 0.6
