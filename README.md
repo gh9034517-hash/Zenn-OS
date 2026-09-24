@@ -33,10 +33,15 @@ Copie `.env.example` para `.env.local` e preencha. Sem as variáveis, cada integ
 > As variáveis com esses prefixos vão para o bundle do front-end. Use só chaves públicas ou restringíveis.
 > Nunca use a `service_role` do Supabase.
 
-## Mascote
+## Mascote — Zennzinho
 
-A arte oficial do personagem Zenn vai em `public/brand/zenn-mascot.png` (fundo transparente).
-Quando o arquivo não existe, o sistema usa a versão vetorial cromada de `src/components/brand/Mascot.tsx`.
+As artes oficiais ficam em `public/brand/`:
+- `zennzinho-mark.webp`: personagem com o Z e a órbita
+- `zennzinho-head.webp`: avatar
+- `zennzinho-desk.webp`: cena de trabalho, usada no onboarding
+- `zenn-logo-full.webp` e `zenn-banner.webp`: logos
+
+O componente `src/components/brand/Mascot.tsx` escolhe a variante pelo tamanho.
 
 ## Estrutura
 

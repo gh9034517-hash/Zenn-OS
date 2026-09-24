@@ -89,9 +89,9 @@ export default function Dashboard() {
           <div className="absolute -top-16 -right-16 size-64 rounded-full border border-white/[0.06]" />
           <div className="absolute -top-4 -right-4 size-40 rounded-full border border-dashed border-white/[0.07]" />
           <CardBody className="relative flex h-full flex-col">
-            <p className="eyebrow">Zenn sugere</p>
+            <p className="eyebrow">Zennzinho sugere</p>
             <div className="mt-4 flex items-center gap-4">
-              <Mascot size={92} />
+              <Mascot size={88} />
               <div>
                 <p className="font-mono text-4xl font-light">{hotLeads}</p>
                 <p className="text-sm text-muted">leads sem site aguardando o primeiro contato</p>

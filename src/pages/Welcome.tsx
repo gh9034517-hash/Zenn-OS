@@ -42,13 +42,13 @@ export default function Welcome() {
       <main className="relative z-10 grid flex-1 items-center gap-10 px-6 pb-12 sm:px-10 lg:grid-cols-2 lg:gap-6">
         <div className="relative flex h-[320px] items-center justify-center sm:h-[440px] lg:h-full">
           <OrbitBackdrop />
-          <Mascot size={260} className="relative drop-shadow-[0_30px_60px_rgba(255,255,255,0.12)]" mood="happy" />
+          <Mascot variant="desk" size={440} className="relative max-w-[88vw]" />
         </div>
 
         <div className="mx-auto w-full max-w-lg animate-slide-up">
           <p className="eyebrow mb-4">Sistema interno · Zenn Works</p>
-          <h1 className="text-4xl leading-[1.05] font-light tracking-tight sm:text-6xl">
-            Olá, eu sou o <span className="text-metal-animated font-display font-bold tracking-[0.08em]">ZENN</span>.
+          <h1 className="text-4xl leading-[1.05] font-light tracking-tight sm:text-5xl xl:text-6xl">
+            Olá, eu sou o <span className="text-metal-animated font-display font-bold tracking-[0.08em]">ZENNZINHO</span>.
           </h1>
           <p className="mt-5 text-base text-muted sm:text-lg">
             Vou te acompanhar da prospecção ao pagamento. Aqui está o que o Zenn OS faz:

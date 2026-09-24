@@ -3,7 +3,6 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowRight, Mail, User, Lock } from 'lucide-react'
 import { Mascot } from '@/components/brand/Mascot'
 import { Logo } from '@/components/brand/Logo'
-import { OrbitBackdrop } from '@/components/brand/OrbitBackdrop'
 import { Button } from '@/components/ui/Button'
 import { FormField, Input } from '@/components/ui/Field'
 import { useSession } from '@/context/SessionContext'
@@ -40,11 +39,13 @@ export default function Login() {
   return (
     <div className="grid min-h-dvh bg-void lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden overflow-hidden border-r border-line lg:block">
-        <div className="grid-bg absolute inset-0 [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]" />
-        <OrbitBackdrop />
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <Mascot size={280} />
-          <p className="eyebrow mt-10">Prospecção · CRM · Projetos · Financeiro</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-10">
+          <img
+            src="/brand/zenn-logo-full.webp"
+            alt="Zenn Works — Ideias → Código → Resultados"
+            className="w-full max-w-[620px] animate-fade-in mix-blend-screen [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_80%)]"
+          />
+          <p className="eyebrow mt-2">Prospecção · CRM · Projetos · Financeiro</p>
         </div>
         <div className="absolute bottom-8 left-10">
           <Logo />

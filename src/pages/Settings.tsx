@@ -140,9 +140,9 @@ export default function Settings() {
 
         <Card className="relative overflow-hidden">
           <CardBody className="flex h-full flex-col items-center justify-center text-center">
-            <Mascot size={110} />
+            <Mascot size={200} variant="mark" />
             <p className="mt-4 text-sm font-medium">Rever apresentação</p>
-            <p className="mt-1 text-xs text-muted">Mostra novamente o onboarding do Zenn.</p>
+            <p className="mt-1 text-xs text-muted">Mostra novamente o onboarding do Zennzinho.</p>
             <Button className="mt-4" size="sm" variant="outline" icon={<Sparkles className="size-3.5" />} onClick={() => { localStorage.removeItem('zenn-os:onboarded'); window.location.assign('/welcome') }}>
               Abrir onboarding
             </Button>
