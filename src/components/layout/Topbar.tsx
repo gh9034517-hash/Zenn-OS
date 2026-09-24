@@ -33,7 +33,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
 
       <button
         onClick={onOpenSearch}
-        className="group ml-auto flex h-9 w-full max-w-sm items-center gap-2.5 rounded-xl border border-line bg-ink px-3 text-sm text-faint transition hover:border-line-strong hover:text-muted md:w-80"
+        className="group ml-auto flex h-9 w-full min-w-0 max-w-sm items-center gap-2.5 rounded-xl border border-line bg-ink px-3 text-sm text-faint transition hover:border-line-strong hover:text-muted md:w-80"
       >
         <Search className="size-4" />
         <span className="flex-1 truncate text-left">Buscar empresa, telefone, cidade…</span>
@@ -46,15 +46,11 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
         </button>
       )}
 
-      <Button
-        variant="primary"
-        size="sm"
-        className="hidden sm:inline-flex"
-        icon={<Plus className="size-3.5" />}
-        onClick={() => navigate('/prospeccao')}
-      >
-        Prospectar
-      </Button>
+      <div className="hidden sm:block">
+        <Button variant="primary" size="sm" icon={<Plus className="size-3.5" />} onClick={() => navigate('/prospeccao')}>
+          Prospectar
+        </Button>
+      </div>
     </header>
   )
 }

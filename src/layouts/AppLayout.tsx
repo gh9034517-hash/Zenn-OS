@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Topbar } from '@/components/layout/Topbar'
@@ -64,7 +64,9 @@ export function AppLayout() {
               <p className="mt-2 text-muted">{error}</p>
             </div>
           ) : (
-            <Outlet />
+            <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><p className="eyebrow animate-pulse">Carregando</p></div>}>
+              <Outlet />
+            </Suspense>
           )}
         </main>
       </div>

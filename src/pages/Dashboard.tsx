@@ -37,7 +37,7 @@ export default function Dashboard() {
     { label: 'Contatados', value: m.funnel.contacted },
     { label: 'Responderam', value: m.funnel.responded },
     { label: 'Negociação', value: m.funnel.negotiating },
-    { label: 'Clientes', value: m.funnel.clients },
+    { label: 'Convertidos', value: m.funnel.clients },
   ]
 
   return (
@@ -146,7 +146,7 @@ export default function Dashboard() {
               <BarChart data={m.revenueByMonth} margin={{ left: -8, right: 4, top: 8 }} barGap={2}>
                 <CartesianGrid stroke={CHART.grid} vertical={false} />
                 <XAxis dataKey="label" {...axisProps} />
-                <YAxis {...axisProps} tickFormatter={(v) => formatCurrencyCompact(v).replace('R$', '').trim()} />
+                <YAxis width={60} {...axisProps} tickFormatter={(v) => formatCurrencyCompact(v).replace('R$', '').trim()} />
                 <Tooltip content={<ChartTooltip format={formatCurrency} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                 <Bar dataKey="recebido" name="Recebido" fill={CHART.primary} radius={[4, 4, 0, 0]} maxBarSize={18} />
                 <Bar dataKey="pendente" name="Pendente" fill={CHART.tertiary} radius={[4, 4, 0, 0]} maxBarSize={18} />

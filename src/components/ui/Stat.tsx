@@ -35,10 +35,10 @@ export function Stat({
           </span>
         )}
       </div>
-      <p className={cn('mt-3 truncate font-mono text-[22px] tracking-tight 2xl:text-[28px]', emphasis ? 'text-metal' : 'text-fg')}>
+      <p className={cn('mt-3 truncate font-mono text-xl tracking-tighter sm:text-[22px] xl:text-xl 2xl:text-[26px]', emphasis ? 'text-metal' : 'text-fg')}>
         {value}
       </p>
-      {hint && <p className="mt-1.5 truncate text-xs text-muted">{hint}</p>}
+      {hint && <div className="mt-1.5 truncate text-xs text-muted">{hint}</div>}
     </div>
   )
 }
