@@ -48,9 +48,10 @@ create table if not exists public.clients (
   notes text not null default ''
 );
 
-alter table public.leads
-  drop constraint if exists leads_client_id_fkey,
-  add constraint leads_client_id_fkey foreign key (client_id) references public.clients(id) on delete set null;
+-- Observação: leads.client_id é uma referência "leve" (texto), sem FK no banco,
+-- para evitar dependência circular com clients.lead_id (senão a inserção em lote
+-- e a conversão lead→cliente quebrariam). O relacionamento é gerido pelo app.
+alter table public.leads drop constraint if exists leads_client_id_fkey;
 
 create table if not exists public.projects (
   id text primary key,
