@@ -71,7 +71,7 @@ interface OsmEl {
 
 // Geocodifica a cidade (Photon, baseado em OSM, permite uso em servidor).
 async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
-  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(city + ", Brasil")}&limit=1&lang=pt`;
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(city + ", Brasil")}&limit=1`;
   const res = await fetch(url, { headers: { "User-Agent": UA } });
   if (!res.ok) return null;
   const data = await res.json();
@@ -107,13 +107,27 @@ async function searchOSM(niche: string, city: string, radiusKm: number) {
   }
   const query = `[out:json][timeout:25];(${clauses.join("")});out center tags 300;`;
 
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
-    body: "data=" + encodeURIComponent(query),
-  });
-  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
-  const data = (await res.json()) as { elements: OsmEl[] };
+  // Vários espelhos: o Deno do Supabase remove o User-Agent e o Overpass
+  // principal recusa (406) sem UA. Tenta espelhos mais tolerantes primeiro.
+  const endpoints = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass-api.de/api/interpreter",
+  ];
+  let data: { elements: OsmEl[] } | null = null;
+  let lastStatus = 0;
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "User-Agent": UA },
+        body: "data=" + encodeURIComponent(query),
+      });
+      lastStatus = res.status;
+      if (res.ok) { data = (await res.json()) as { elements: OsmEl[] }; break; }
+    } catch { /* tenta o próximo */ }
+  }
+  if (!data) throw new Error(`Overpass indisponivel (HTTP ${lastStatus})`);
 
   const kws = plan.keywords.map(norm);
   const seen = new Set<string>();
