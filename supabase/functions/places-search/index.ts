@@ -1,10 +1,10 @@
 // ============================================================
 // Edge Function: places-search
-// Proxy oficial para a Google Places API (New) — Text Search.
-// A chave do Google fica guardada na tabela app_settings
-// (definida pelo app em Configurações) e NUNCA vai ao navegador.
-// Sem chave configurada => responde { mode: "demo" } e o app usa
-// dados fictícios. Requer JWT válido (usuário logado).
+// Busca real de empresas para prospecção. Duas fontes:
+//   1) OpenStreetMap (Overpass) — GRÁTIS, sem chave, padrão.
+//   2) Google Places (New) — só se houver chave em app_settings.
+// Sem nenhuma delas disponível => { mode: "demo" }.
+// Requer JWT válido (usuário logado).
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
@@ -13,122 +13,204 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
-
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const FIELD_MASK = [
-  "places.id",
-  "places.displayName",
-  "places.formattedAddress",
-  "places.addressComponents",
-  "places.nationalPhoneNumber",
-  "places.internationalPhoneNumber",
-  "places.rating",
-  "places.userRatingCount",
-  "places.websiteUri",
-  "places.googleMapsUri",
-  "places.primaryTypeDisplayName",
-  "nextPageToken",
-].join(",");
+const norm = (s: string) =>
+  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-interface AddressComponent { longText: string; types: string[] }
-interface GPlace {
-  id: string;
-  displayName?: { text: string };
-  formattedAddress?: string;
-  addressComponents?: AddressComponent[];
-  nationalPhoneNumber?: string;
-  internationalPhoneNumber?: string;
-  rating?: number;
-  userRatingCount?: number;
-  websiteUri?: string;
-  googleMapsUri?: string;
-  primaryTypeDisplayName?: { text: string };
+// ---------- OpenStreetMap (grátis) ----------
+const OSM_UA = "ZennOS/1.0 (prospeccao; contato.zennworks@gmail.com)";
+
+// Mapeia nichos comuns (pt-BR) para tags OSM. Além disso, sempre casa pelo nome.
+function osmCategoryFilters(niche: string): string[] {
+  const n = norm(niche);
+  const has = (...w: string[]) => w.some((x) => n.includes(x));
+  if (has("pizzar", "pizza")) return ['["amenity"~"restaurant|fast_food"]'];
+  if (has("hamburg", "burger", "lanchonete")) return ['["amenity"~"fast_food|restaurant"]'];
+  if (has("restaurante", "comida", "buffet", "churrasc")) return ['["amenity"="restaurant"]'];
+  if (has("bar", "pub", "boteco", "cervej")) return ['["amenity"~"bar|pub"]'];
+  if (has("cafe", "cafeteria", "confeitaria")) return ['["amenity"="cafe"]'];
+  if (has("padaria", "panific")) return ['["shop"="bakery"]'];
+  if (has("barbear", "barber")) return ['["shop"="hairdresser"]', '["shop"="barber"]'];
+  if (has("salao", "beleza", "cabelei", "estetica", "manicure")) return ['["shop"~"hairdresser|beauty"]', '["beauty"]'];
+  if (has("academia", "fitness", "crossfit", "musculac")) return ['["leisure"="fitness_centre"]', '["sport"="fitness"]'];
+  if (has("pet", "veterin")) return ['["shop"="pet"]', '["amenity"="veterinary"]'];
+  if (has("odont", "dentist", "dental")) return ['["amenity"="dentist"]', '["healthcare"="dentist"]'];
+  if (has("clinica", "medic", "saude", "consultorio")) return ['["amenity"~"clinic|doctors"]', '["healthcare"]'];
+  if (has("farmacia", "drogaria")) return ['["amenity"="pharmacy"]'];
+  if (has("oficina", "mecanic", "autocenter", "auto center", "funilaria")) return ['["shop"="car_repair"]'];
+  if (has("mercado", "supermerc", "merceari", "hortifr")) return ['["shop"~"supermarket|convenience|greengrocer"]'];
+  if (has("roupa", "moda", "boutique", "vestuar")) return ['["shop"~"clothes|boutique|fashion"]'];
+  if (has("otica", "oculos")) return ['["shop"="optician"]'];
+  if (has("tatuagem", "tattoo", "piercing")) return ['["shop"="tattoo"]'];
+  if (has("escola", "curso", "ensino")) return ['["amenity"~"school|college|language_school"]'];
+  if (has("hotel", "pousada", "hostel")) return ['["tourism"~"hotel|guest_house|hostel"]'];
+  if (has("imobiliar", "imovel")) return ['["office"="estate_agent"]', '["shop"="estate_agent"]'];
+  if (has("advocacia", "advogad", "juridic")) return ['["office"="lawyer"]'];
+  if (has("contabil", "contador")) return ['["office"="accountant"]'];
+  return []; // sem categoria mapeada: só casa pelo nome
 }
 
-async function places(body: Record<string, unknown>, key: string, mask: string) {
+interface OsmEl {
+  type: string; id: number; lat?: number; lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string>;
+}
+
+async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(city)}`;
+  const res = await fetch(url, { headers: { "User-Agent": OSM_UA, "Accept-Language": "pt-BR" } });
+  if (!res.ok) return null;
+  const data = (await res.json()) as Array<{ lat: string; lon: string }>;
+  if (!data.length) return null;
+  return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
+}
+
+function osmAddress(t: Record<string, string>, fallbackCity: string) {
+  const street = [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(", ");
+  const parts = [street, t["addr:suburb"] || t["addr:neighbourhood"]].filter(Boolean);
+  return { address: parts.join(" — "), city: t["addr:city"] || fallbackCity };
+}
+
+async function searchOSM(niche: string, city: string, radiusKm: number) {
+  const center = await geocodeCity(city);
+  if (!center) return null;
+  const radius = Math.min(Math.max(radiusKm || 10, 1), 50) * 1000;
+  const around = `(around:${radius},${center.lat},${center.lon})`;
+  const nameRe = norm(niche).split(/\s+/)[0]; // primeira palavra do nicho
+  const clauses = [`nwr["name"~"${nameRe}",i]${around};`];
+  for (const cat of osmCategoryFilters(niche)) clauses.push(`nwr${cat}${around};`);
+  const query = `[out:json][timeout:25];(${clauses.join("")});out center tags 80;`;
+
+  const res = await fetch("https://overpass-api.de/api/interpreter", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": OSM_UA },
+    body: "data=" + encodeURIComponent(query),
+  });
+  if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
+  const data = (await res.json()) as { elements: OsmEl[] };
+
+  const seen = new Set<string>();
+  const results = (data.elements ?? [])
+    .filter((e) => e.tags?.name)
+    .filter((e) => {
+      const k = norm(e.tags!.name);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .map((e) => {
+      const t = e.tags!;
+      const { address, city: c } = osmAddress(t, city);
+      const website = t["website"] || t["contact:website"] || null;
+      const ig = t["contact:instagram"] || t["instagram"] || null;
+      const fb = t["contact:facebook"] || t["facebook"] || null;
+      const lat = e.lat ?? e.center?.lat;
+      const lon = e.lon ?? e.center?.lon;
+      return {
+        placeId: `osm_${e.type}_${e.id}`,
+        name: t.name,
+        category: t.cuisine || t.shop || t.amenity || t.office || t.leisure || niche,
+        address,
+        city: c,
+        phone: t["contact:phone"] || t["phone"] || null,
+        rating: null,
+        reviewsCount: 0,
+        website: website && website.trim() ? website : null,
+        googleMapsUrl:
+          lat && lon
+            ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.name} ${c}`)}`,
+        facebook: fb,
+        instagram: ig,
+        source: "osm" as const,
+      };
+    });
+  return results.slice(0, 60);
+}
+
+// ---------- Google Places (opcional, pago) ----------
+const FIELD_MASK = [
+  "places.id", "places.displayName", "places.formattedAddress", "places.addressComponents",
+  "places.nationalPhoneNumber", "places.internationalPhoneNumber", "places.rating",
+  "places.userRatingCount", "places.websiteUri", "places.googleMapsUri",
+  "places.primaryTypeDisplayName", "nextPageToken",
+].join(",");
+
+interface GPlace {
+  id: string; displayName?: { text: string }; formattedAddress?: string;
+  addressComponents?: Array<{ longText: string; types: string[] }>;
+  nationalPhoneNumber?: string; internationalPhoneNumber?: string;
+  rating?: number; userRatingCount?: number; websiteUri?: string;
+  googleMapsUri?: string; primaryTypeDisplayName?: { text: string };
+  location?: { latitude: number; longitude: number };
+}
+async function gplaces(body: Record<string, unknown>, key: string, mask: string) {
   const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": mask },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
-    let detail = res.statusText;
-    try { detail = (await res.json())?.error?.message ?? detail; } catch { /* noop */ }
-    throw new Error(`Google Places: ${detail} (HTTP ${res.status})`);
+    let d = res.statusText;
+    try { d = (await res.json())?.error?.message ?? d; } catch { /* noop */ }
+    throw new Error(`Google Places: ${d} (HTTP ${res.status})`);
   }
   return res.json() as Promise<{ places?: GPlace[]; nextPageToken?: string }>;
 }
-
-function mapPlace(p: GPlace, fallbackCity: string, niche: string) {
-  const city = p.addressComponents?.find(
-    (c) => c.types.includes("administrative_area_level_2") || c.types.includes("locality"),
-  );
-  return {
-    placeId: p.id,
-    name: p.displayName?.text ?? "Sem nome",
-    category: p.primaryTypeDisplayName?.text ?? niche,
-    address: p.formattedAddress ?? "",
-    city: city?.longText ?? fallbackCity,
-    phone: p.nationalPhoneNumber ?? p.internationalPhoneNumber ?? null,
-    rating: typeof p.rating === "number" ? p.rating : null,
-    reviewsCount: p.userRatingCount ?? 0,
-    website: p.websiteUri?.trim() ? p.websiteUri : null,
-    googleMapsUrl: p.googleMapsUri ?? null,
-    facebook: null,
-    instagram: null,
-    source: "google_places" as const,
-  };
+async function searchGoogle(niche: string, city: string, radiusKm: number, key: string) {
+  let center: { latitude: number; longitude: number } | null = null;
+  try {
+    const g = await gplaces({ textQuery: city, languageCode: "pt-BR", regionCode: "BR", pageSize: 1 }, key, "places.location");
+    center = g.places?.[0]?.location ?? null;
+  } catch { /* sem bias */ }
+  const radius = Math.min(Math.max(radiusKm || 10, 1), 50) * 1000;
+  const base: Record<string, unknown> = { textQuery: `${niche} em ${city}`, languageCode: "pt-BR", regionCode: "BR", pageSize: 20 };
+  if (center) base.locationBias = { circle: { center, radius } };
+  const out: unknown[] = [];
+  let token: string | undefined;
+  for (let p = 0; p < 3; p++) {
+    const data = await gplaces(token ? { ...base, pageToken: token } : base, key, FIELD_MASK);
+    for (const pl of data.places ?? []) {
+      const c = pl.addressComponents?.find((x) => x.types.includes("administrative_area_level_2") || x.types.includes("locality"));
+      out.push({
+        placeId: pl.id, name: pl.displayName?.text ?? "Sem nome",
+        category: pl.primaryTypeDisplayName?.text ?? niche, address: pl.formattedAddress ?? "",
+        city: c?.longText ?? city, phone: pl.nationalPhoneNumber ?? pl.internationalPhoneNumber ?? null,
+        rating: typeof pl.rating === "number" ? pl.rating : null, reviewsCount: pl.userRatingCount ?? 0,
+        website: pl.websiteUri?.trim() ? pl.websiteUri : null, googleMapsUrl: pl.googleMapsUri ?? null,
+        facebook: null, instagram: null, source: "google_places" as const,
+      });
+    }
+    if (!data.nextPageToken) break;
+    token = data.nextPageToken;
+  }
+  return out;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
   try {
     const { niche, city, radiusKm } = await req.json();
     if (!niche || !city) return json({ error: "Informe nicho e cidade." }, 400);
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    // Lê a chave do Google guardada em app_settings (service role ignora RLS).
-    const settingsRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/app_settings?key=eq.google_maps_api_key&select=value`,
-      { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } },
-    );
-    const rows = (await settingsRes.json()) as Array<{ value: string | null }>;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.google_maps_api_key&select=value`,
+      { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
+    const rows = (await r.json()) as Array<{ value: string | null }>;
     const key = rows?.[0]?.value?.trim();
 
-    if (!key) return json({ mode: "demo", results: [] });
-
-    // Geocodifica a cidade para aplicar o raio como locationBias.
-    let center: { latitude: number; longitude: number } | null = null;
-    try {
-      const geo = await places({ textQuery: city, languageCode: "pt-BR", regionCode: "BR", pageSize: 1 }, key, "places.location");
-      center = geo.places?.[0]?.["location" as keyof GPlace] as never ?? null;
-    } catch { /* segue sem bias */ }
-
-    const radius = Math.min(Math.max(Number(radiusKm) || 10, 1), 50) * 1000;
-    const baseBody: Record<string, unknown> = {
-      textQuery: `${niche} em ${city}`,
-      languageCode: "pt-BR",
-      regionCode: "BR",
-      pageSize: 20,
-    };
-    if (center) baseBody.locationBias = { circle: { center, radius } };
-
-    const results: ReturnType<typeof mapPlace>[] = [];
-    let pageToken: string | undefined;
-    for (let page = 0; page < 3; page++) {
-      const data = await places(pageToken ? { ...baseBody, pageToken } : baseBody, key, FIELD_MASK);
-      results.push(...(data.places ?? []).map((p) => mapPlace(p, city, niche)));
-      if (!data.nextPageToken) break;
-      pageToken = data.nextPageToken;
+    // Google se houver chave; senão OpenStreetMap (grátis).
+    if (key) {
+      const results = await searchGoogle(niche, city, Number(radiusKm), key);
+      return json({ mode: "live", source: "google", results });
     }
-
-    return json({ mode: "live", results });
+    const osm = await searchOSM(niche, city, Number(radiusKm));
+    if (osm === null) return json({ error: "Cidade não encontrada no OpenStreetMap." }, 404);
+    return json({ mode: "live", source: "osm", results: osm });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }

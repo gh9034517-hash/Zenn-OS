@@ -31,6 +31,8 @@ const FIELD_MASK = [
 
 export interface PlacesSearchResponse {
   mode: 'live' | 'demo'
+  /** Fonte dos dados quando ao vivo: Google (pago) ou OpenStreetMap (grátis). */
+  source?: 'google' | 'osm' | 'demo'
   results: PlaceResult[]
   query: SearchParams
   fetchedAt: string
@@ -211,11 +213,17 @@ async function searchViaEdge(params: SearchParams): Promise<PlacesSearchResponse
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body?.error ?? `Edge function (HTTP ${res.status})`)
   const fetchedAt = new Date().toISOString()
-  // Sem chave no servidor: a função responde "demo" e caímos nos dados fictícios.
+  // A função responde "demo" só se nenhuma fonte real estiver disponível.
   if (body.mode !== 'live') {
-    return { mode: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
+    return { mode: 'demo', source: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
   }
-  return { mode: 'live', results: body.results as PlaceResult[], query: params, fetchedAt }
+  return {
+    mode: 'live',
+    source: body.source === 'google' ? 'google' : 'osm',
+    results: body.results as PlaceResult[],
+    query: params,
+    fetchedAt,
+  }
 }
 
 /** Busca leads — real quando há chave configurada, DEMO caso contrário. */

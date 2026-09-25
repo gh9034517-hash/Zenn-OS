@@ -20,7 +20,7 @@ export type LeadStatus =
   | 'cliente'
   | 'perdido'
 
-export type LeadSource = 'google_places' | 'demo' | 'manual' | 'meta'
+export type LeadSource = 'google_places' | 'osm' | 'demo' | 'manual' | 'meta'
 
 export interface Lead extends BaseRecord {
   name: string
@@ -168,7 +168,7 @@ export interface PlaceResult {
   googleMapsUrl: string | null
   facebook: string | null
   instagram: string | null
-  source: 'google_places' | 'demo'
+  source: 'google_places' | 'osm' | 'demo'
 }
 
 export interface SearchParams {

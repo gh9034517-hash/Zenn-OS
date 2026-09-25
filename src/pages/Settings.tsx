@@ -62,25 +62,27 @@ function GoogleKeyCard() {
   return (
     <Card className="lg:col-span-2">
       <CardHeader
-        eyebrow="Prospecção real"
-        title="Chave do Google Places"
+        eyebrow="Prospecção · opcional"
+        title="Google Places (opcional)"
         action={
           loading ? null : current ? (
-            <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>Configurada</Badge>
+            <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>Google ativo</Badge>
           ) : (
-            <Badge tone="dashed" icon={<CircleDashed className="size-3" />}>Demo mode</Badge>
+            <Badge tone="default" icon={<CheckCircle2 className="size-3" />}>Grátis (OpenStreetMap)</Badge>
           )
         }
       />
       <CardBody className="space-y-4">
         <p className="text-sm text-muted">
-          Cole sua chave da <span className="text-fg">Google Places API (New)</span>. Ela é guardada com segurança no seu
-          Supabase e usada por uma função no servidor — <span className="text-fg">nunca fica exposta no navegador</span>.
-          Com a chave configurada, o Encontrar Leads busca empresas reais.
+          A busca de leads já funciona <span className="text-fg">de graça</span>, com dados reais do
+          <span className="text-fg"> OpenStreetMap</span> — não precisa de chave nem cartão. O Google é um
+          <span className="text-fg"> upgrade opcional</span> que adiciona nota e número de avaliações (exige conta de
+          faturamento no Google Cloud). Se colar a chave aqui, ela fica no seu Supabase e é usada por uma função no
+          servidor — <span className="text-fg">nunca fica exposta no navegador</span>.
         </p>
         {!integrations.supabase && (
           <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
-            A busca real precisa do Supabase configurado (é ele quem guarda a chave e roda a função). Neste modo local, a busca fica em DEMO.
+            A chave do Google é guardada no Supabase. Neste modo local (sem Supabase), a busca fica em DEMO.
           </p>
         )}
         {masked && (

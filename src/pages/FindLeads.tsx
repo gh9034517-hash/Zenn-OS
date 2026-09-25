@@ -60,7 +60,13 @@ export default function FindLeads() {
       const res = await searchPlaces({ niche: niche.trim(), city: city.trim(), radiusKm: Number(radius) || 10 })
       setResponse(res)
       sessionStorage.setItem(LAST_SEARCH_KEY, JSON.stringify(res))
-      toast.success(`${res.results.length} empresas encontradas`, res.mode === 'demo' ? 'DEMO MODE — dados fictícios' : 'Google Places API')
+      const fonte =
+        res.mode === 'demo'
+          ? 'DEMO MODE — dados fictícios'
+          : res.source === 'google'
+            ? 'Google Places API'
+            : 'OpenStreetMap · dados reais e gratuitos'
+      toast.success(`${res.results.length} empresas encontradas`, fonte)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha na busca')
     } finally {
@@ -127,10 +133,10 @@ export default function FindLeads() {
         <div className="mb-4 flex animate-fade-in items-start gap-3 rounded-2xl border border-dashed border-white/25 bg-white/[0.02] px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-soft" />
           <p className="text-muted">
-            <span className="font-medium text-fg">DEMO MODE.</span> Sem chave do Google configurada — os resultados abaixo são
-            <span className="text-fg"> fictícios</span>, gerados para teste. Adicione sua chave em{' '}
-            <Link to="/configuracoes" className="text-fg underline decoration-white/30 underline-offset-4">Configurações</Link>{' '}
-            para buscar empresas reais no Google Places.
+            <span className="font-medium text-fg">DEMO MODE.</span> Neste modo local os resultados são
+            <span className="text-fg"> fictícios</span>. No app publicado (com Supabase) a busca é
+            <span className="text-fg"> real e gratuita via OpenStreetMap</span> — e você pode, opcionalmente, ativar o Google em{' '}
+            <Link to="/configuracoes" className="text-fg underline decoration-white/30 underline-offset-4">Configurações</Link>.
           </p>
         </div>
       )}
@@ -207,7 +213,13 @@ export default function FindLeads() {
                 <span className="text-muted">
                   de {response.results.length} resultados · {response.query.niche} em {response.query.city} · {response.query.radiusKm} km
                 </span>
-                {response.mode === 'demo' ? <DemoBadge label="Demo mode" /> : <Badge tone="outline">Google Places · ao vivo</Badge>}
+                {response.mode === 'demo' ? (
+                  <DemoBadge label="Demo mode" />
+                ) : response.source === 'google' ? (
+                  <Badge tone="outline">Google Places · ao vivo</Badge>
+                ) : (
+                  <Badge tone="outline">OpenStreetMap · grátis</Badge>
+                )}
                 <span className="text-xs text-faint">{formatRelative(response.fetchedAt)}</span>
               </div>
               <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportFiltered} disabled={!filtered.length}>
