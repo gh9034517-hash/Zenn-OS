@@ -190,12 +190,14 @@ export function generateDemoPlaces(params: SearchParams): PlaceResult[] {
 }
 
 /**
- * Busca via Edge Function do Supabase (proxy oficial do Google).
- * A chave do Google fica no servidor; o navegador nunca a vê.
- * Retorna null quando o Supabase não está configurado (usa caminho local).
+ * Google Places via Edge Function do Supabase (proxy). Só é usada quando há
+ * chave do Google gravada em app_settings — a chave fica no servidor e o
+ * navegador nunca a vê. Retorna null quando não há chave / Supabase.
  */
-async function searchViaEdge(params: SearchParams): Promise<PlacesSearchResponse | null> {
+async function searchGoogleViaEdge(params: SearchParams): Promise<PlacesSearchResponse | null> {
   if (!integrations.supabase) return null
+  const { isGoogleKeyConfigured } = await import('@/services/appSettings')
+  if (!(await isGoogleKeyConfigured())) return null
   const { getSupabase } = await import('@/lib/supabase')
   const sb = getSupabase()
   if (!sb) return null
@@ -213,10 +215,7 @@ async function searchViaEdge(params: SearchParams): Promise<PlacesSearchResponse
   const body = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(body?.error ?? `Edge function (HTTP ${res.status})`)
   const fetchedAt = new Date().toISOString()
-  // A função responde "demo" só se nenhuma fonte real estiver disponível.
-  if (body.mode !== 'live') {
-    return { mode: 'demo', source: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
-  }
+  if (body.mode !== 'live') return null
   return {
     mode: 'live',
     source: body.source === 'google' ? 'google' : 'osm',
@@ -226,18 +225,39 @@ async function searchViaEdge(params: SearchParams): Promise<PlacesSearchResponse
   }
 }
 
-/** Busca leads — real quando há chave configurada, DEMO caso contrário. */
+/**
+ * Busca leads. Ordem de preferência:
+ *   1) Google Places (chave de build) — local dev com chave.
+ *   2) Google Places via Edge (chave gravada em app_settings) — pago, opcional.
+ *   3) OpenStreetMap no navegador — GRÁTIS, é o padrão.
+ *   4) DEMO — só se a busca grátis falhar/retornar vazio.
+ */
 export async function searchPlaces(params: SearchParams): Promise<PlacesSearchResponse> {
   const fetchedAt = new Date().toISOString()
-  // 1) Modo Supabase (deploy): usa a Edge Function.
-  const viaEdge = await searchViaEdge(params)
-  if (viaEdge) return viaEdge
-  // 2) Modo local com chave de build configurada.
+
+  // 1) Chave de build (desenvolvimento local com Google).
   if (isGooglePlacesConfigured()) {
-    return { mode: 'live', results: await searchLive(params), query: params, fetchedAt }
+    return { mode: 'live', source: 'google', results: await searchLive(params), query: params, fetchedAt }
   }
-  // 3) DEMO.
-  return { mode: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
+
+  // 2) Google via Edge, só quando há chave configurada no servidor.
+  const viaEdge = await searchGoogleViaEdge(params)
+  if (viaEdge) return viaEdge
+
+  // 3) OpenStreetMap direto no navegador (grátis). É o caminho padrão.
+  try {
+    const { searchPlacesOSM } = await import('@/services/osmSearch')
+    const results = await searchPlacesOSM(params)
+    if (results.length) {
+      return { mode: 'live', source: 'osm', results, query: params, fetchedAt }
+    }
+  } catch (err) {
+    // Rede/servidor de mapas indisponível: cai para DEMO com aviso silencioso.
+    console.warn('Busca OSM falhou, usando DEMO:', err)
+  }
+
+  // 4) DEMO.
+  return { mode: 'demo', source: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
 }
 
 /** Considera "sem site" quando website é vazio, null ou undefined. */

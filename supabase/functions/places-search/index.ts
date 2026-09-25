@@ -25,6 +25,18 @@ const UA = "ZennOS/1.0 (prospeccao; contato.zennworks@gmail.com)";
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
+// fetch com timeout de cliente. Sem isto, um espelho lento (Overpass sob
+// carga mantém a conexão aberta) trava a função até o limite do runtime (546).
+async function fetchT(url: string, opts: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 // ---------- OpenStreetMap ----------
 interface Plan { selectors: string[]; keywords: string[] }
 
@@ -72,7 +84,7 @@ interface OsmEl {
 // Geocodifica a cidade (Photon, baseado em OSM, permite uso em servidor).
 async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
   const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(city + ", Brasil")}&limit=1`;
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
+  const res = await fetchT(url, { headers: { "User-Agent": UA } }, 9000);
   if (!res.ok) return null;
   const data = await res.json();
   const f = data?.features?.[0];
@@ -115,19 +127,22 @@ async function searchOSM(niche: string, city: string, radiusKm: number) {
     "https://overpass-api.de/api/interpreter",
   ];
   let data: { elements: OsmEl[] } | null = null;
-  let lastStatus = 0;
+  const attempts: string[] = [];
   for (const ep of endpoints) {
     try {
-      const res = await fetch(ep, {
+      const res = await fetchT(ep, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json", "User-Agent": UA },
         body: "data=" + encodeURIComponent(query),
-      });
-      lastStatus = res.status;
+      }, 12000);
       if (res.ok) { data = (await res.json()) as { elements: OsmEl[] }; break; }
-    } catch { /* tenta o próximo */ }
+      const snippet = (await res.text().catch(() => "")).slice(0, 120).replace(/\s+/g, " ");
+      attempts.push(`${new URL(ep).host}=${res.status}:${snippet}`);
+    } catch (err) {
+      attempts.push(`${new URL(ep).host}=ERR:${err instanceof Error ? err.name + " " + err.message : String(err)}`);
+    }
   }
-  if (!data) throw new Error(`Overpass indisponivel (HTTP ${lastStatus})`);
+  if (!data) throw new Error(`Overpass indisponivel | ${attempts.join(" || ")}`);
 
   const kws = plan.keywords.map(norm);
   const seen = new Set<string>();
@@ -191,11 +206,11 @@ interface GPlace {
   location?: { latitude: number; longitude: number };
 }
 async function gplaces(body: Record<string, unknown>, key: string, mask: string) {
-  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+  const res = await fetchT("https://places.googleapis.com/v1/places:searchText", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-Goog-Api-Key": key, "X-Goog-FieldMask": mask },
     body: JSON.stringify(body),
-  });
+  }, 15000);
   if (!res.ok) {
     let d = res.statusText;
     try { d = (await res.json())?.error?.message ?? d; } catch { /* noop */ }
@@ -242,8 +257,8 @@ Deno.serve(async (req) => {
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.google_maps_api_key&select=value`,
-      { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } });
+    const r = await fetchT(`${SUPABASE_URL}/rest/v1/app_settings?key=eq.google_maps_api_key&select=value`,
+      { headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` } }, 8000);
     const rows = (await r.json()) as Array<{ value: string | null }>;
     const key = rows?.[0]?.value?.trim();
 
