@@ -18,6 +18,7 @@ import type {
   Transaction,
 } from '@/types'
 import { generateDemoData } from '@/data/demo'
+import { getSupabase } from '@/lib/supabase'
 import { LEAD_STATUS_LABEL, PROJECT_STATUS_LABEL } from '@/data/constants'
 import { formatCurrency } from '@/utils/format'
 
@@ -124,6 +125,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setLoading(false)
       }
     })()
+  }, [refresh])
+
+  // Modo Supabase: recarrega os dados sempre que a sessão de autenticação muda
+  // (login, logout, refresh de token). Sem isso, o primeiro carregamento acontece
+  // antes do login e o RLS devolve vazio.
+  useEffect(() => {
+    if (db.provider.name !== 'supabase') return
+    const sb = getSupabase()
+    if (!sb) return
+    const { data } = sb.auth.onAuthStateChange((_event, session) => {
+      if (session) void refresh()
+      else setSnap(EMPTY)
+    })
+    return () => data.subscription.unsubscribe()
   }, [refresh])
 
   // Sincroniza entre abas do navegador
