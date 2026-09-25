@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Download, MapPinned, RefreshCw, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed } from 'lucide-react'
+import { Database, Download, MapPinned, RefreshCw, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed, KeyRound, ExternalLink } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -15,6 +15,114 @@ import { useToast } from '@/components/ui/Toast'
 import { integrations, env } from '@/lib/env'
 import { importSnapshot, type Snapshot } from '@/services/database'
 import { downloadFile } from '@/utils/csv'
+import { GOOGLE_KEY, getSetting, setSetting } from '@/services/appSettings'
+
+function GoogleKeyCard() {
+  const toast = useToast()
+  const [current, setCurrent] = useState<string | null>(null)
+  const [value, setValue] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    getSetting(GOOGLE_KEY)
+      .then(setCurrent)
+      .finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  const masked = current ? `${current.slice(0, 6)}••••••••${current.slice(-4)}` : null
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await setSetting(GOOGLE_KEY, value.trim())
+      toast.success('Chave do Google salva', 'A busca de leads agora é real.')
+      setValue('')
+      load()
+    } catch (e) {
+      toast.error('Não foi possível salvar', e instanceof Error ? e.message : undefined)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const remove = async () => {
+    setBusy(true)
+    try {
+      await setSetting(GOOGLE_KEY, null)
+      toast.info('Chave removida', 'A busca volta para o modo DEMO.')
+      load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader
+        eyebrow="Prospecção real"
+        title="Chave do Google Places"
+        action={
+          loading ? null : current ? (
+            <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>Configurada</Badge>
+          ) : (
+            <Badge tone="dashed" icon={<CircleDashed className="size-3" />}>Demo mode</Badge>
+          )
+        }
+      />
+      <CardBody className="space-y-4">
+        <p className="text-sm text-muted">
+          Cole sua chave da <span className="text-fg">Google Places API (New)</span>. Ela é guardada com segurança no seu
+          Supabase e usada por uma função no servidor — <span className="text-fg">nunca fica exposta no navegador</span>.
+          Com a chave configurada, o Encontrar Leads busca empresas reais.
+        </p>
+        {!integrations.supabase && (
+          <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
+            A busca real precisa do Supabase configurado (é ele quem guarda a chave e roda a função). Neste modo local, a busca fica em DEMO.
+          </p>
+        )}
+        {masked && (
+          <p className="flex items-center gap-2 text-sm">
+            <KeyRound className="size-4 text-faint" />
+            <code className="font-mono text-xs text-fg-soft">{masked}</code>
+          </p>
+        )}
+        <FormField label={current ? 'Substituir chave' : 'Chave da API'}>
+          <Input
+            type="password"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="AIza…"
+            disabled={!integrations.supabase}
+          />
+        </FormField>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="primary" loading={busy} disabled={!value.trim() || !integrations.supabase} onClick={save}>
+            Salvar chave
+          </Button>
+          {current && (
+            <Button variant="danger" loading={busy} onClick={remove}>
+              Remover
+            </Button>
+          )}
+          <a
+            href="https://console.cloud.google.com/google/maps-apis/credentials"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
+          >
+            Gerar uma chave <ExternalLink className="size-3" />
+          </a>
+        </div>
+        <p className="text-xs text-faint">
+          Dica de segurança: restrinja a chave por referenciador HTTP e habilite apenas a “Places API (New)”. A cobrança é da sua conta Google.
+        </p>
+      </CardBody>
+    </Card>
+  )
+}
 
 function IntegrationRow({ icon, name, configured, detail, envVars }: { icon: React.ReactNode; name: string; configured: boolean; detail: string; envVars: string[] }) {
   return (
@@ -112,6 +220,8 @@ export default function Settings() {
               detail={integrations.meta ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.` : 'Sem token: o enriquecimento no detalhe do lead retorna dados DEMO.'} />
           </CardBody>
         </Card>
+
+        <GoogleKeyCard />
 
         <Card className="lg:col-span-2">
           <CardHeader eyebrow="Dados" title="Base armazenada" action={<Badge tone="muted">{data.providerName}</Badge>} />

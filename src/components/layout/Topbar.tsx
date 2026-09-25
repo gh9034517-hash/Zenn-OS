@@ -4,7 +4,6 @@ import { NAVIGATION } from '@/data/navigation'
 import { DemoBadge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useData } from '@/context/DataContext'
-import { isGooglePlacesConfigured } from '@/services/googlePlaces'
 
 export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; onOpenSearch: () => void }) {
   const { pathname } = useLocation()
@@ -13,7 +12,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
   const current = NAVIGATION.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label }))).find((i) =>
     i.to === '/' ? pathname === '/' : pathname.startsWith(i.to),
   )
-  const demoMode = hasDemoData || !isGooglePlacesConfigured()
+  const demoMode = hasDemoData
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-line bg-void/75 px-4 backdrop-blur-xl sm:px-6">

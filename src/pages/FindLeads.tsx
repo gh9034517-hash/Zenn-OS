@@ -1,4 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -11,7 +12,8 @@ import { LeadDrawer } from '@/components/leads/LeadDrawer'
 import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBadges'
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
-import { searchPlaces, hasNoWebsite, isGooglePlacesConfigured, type PlacesSearchResponse } from '@/services/googlePlaces'
+import { searchPlaces, hasNoWebsite, type PlacesSearchResponse } from '@/services/googlePlaces'
+import { useGoogleStatus } from '@/hooks/useGoogleStatus'
 import type { PlaceResult } from '@/types'
 import { exportCsv } from '@/utils/csv'
 import { formatNumber, formatRelative } from '@/utils/format'
@@ -32,6 +34,7 @@ export default function FindLeads() {
   const { findLeadByPlace, leads } = useData()
   const toast = useToast()
   const workflow = useLeadWorkflow()
+  const google = useGoogleStatus()
   const last = readLastSearch()
 
   const [niche, setNiche] = useState(last?.query.niche ?? '')
@@ -115,17 +118,19 @@ export default function FindLeads() {
   return (
     <>
       <PageHeader
-        eyebrow={<>Prospecção {!isGooglePlacesConfigured() && <DemoBadge label="Demo mode" />}</>}
+        eyebrow={<>Prospecção {!google.loading && !google.configured && <DemoBadge label="Demo mode" />}</>}
         title="Encontrar leads"
         description="Busque empresas por nicho e cidade. Quem não tem site aparece destacado — são as melhores oportunidades."
       />
 
-      {!isGooglePlacesConfigured() && (
+      {!google.loading && !google.configured && (
         <div className="mb-4 flex animate-fade-in items-start gap-3 rounded-2xl border border-dashed border-white/25 bg-white/[0.02] px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-soft" />
           <p className="text-muted">
-            <span className="font-medium text-fg">DEMO MODE.</span> GOOGLE_MAPS_API_KEY não configurada — os resultados abaixo são
-            <span className="text-fg"> fictícios</span>, gerados para teste. Configure a chave no <code className="font-mono text-xs">.env.local</code> para buscar dados reais do Google Places.
+            <span className="font-medium text-fg">DEMO MODE.</span> Sem chave do Google configurada — os resultados abaixo são
+            <span className="text-fg"> fictícios</span>, gerados para teste. Adicione sua chave em{' '}
+            <Link to="/configuracoes" className="text-fg underline decoration-white/30 underline-offset-4">Configurações</Link>{' '}
+            para buscar empresas reais no Google Places.
           </p>
         </div>
       )}

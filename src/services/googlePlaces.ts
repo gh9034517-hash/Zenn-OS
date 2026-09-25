@@ -187,13 +187,49 @@ export function generateDemoPlaces(params: SearchParams): PlaceResult[] {
   })
 }
 
-/** Busca leads — real quando a API está configurada, DEMO caso contrário. */
-export async function searchPlaces(params: SearchParams): Promise<PlacesSearchResponse> {
+/**
+ * Busca via Edge Function do Supabase (proxy oficial do Google).
+ * A chave do Google fica no servidor; o navegador nunca a vê.
+ * Retorna null quando o Supabase não está configurado (usa caminho local).
+ */
+async function searchViaEdge(params: SearchParams): Promise<PlacesSearchResponse | null> {
+  if (!integrations.supabase) return null
+  const { getSupabase } = await import('@/lib/supabase')
+  const sb = getSupabase()
+  if (!sb) return null
+  const { data: sessionData } = await sb.auth.getSession()
+  const token = sessionData.session?.access_token ?? env.supabaseAnonKey
+  const res = await fetch(`${env.supabaseUrl}/functions/v1/places-search`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: env.supabaseAnonKey,
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(params),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(body?.error ?? `Edge function (HTTP ${res.status})`)
   const fetchedAt = new Date().toISOString()
-  if (!isGooglePlacesConfigured()) {
+  // Sem chave no servidor: a função responde "demo" e caímos nos dados fictícios.
+  if (body.mode !== 'live') {
     return { mode: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
   }
-  return { mode: 'live', results: await searchLive(params), query: params, fetchedAt }
+  return { mode: 'live', results: body.results as PlaceResult[], query: params, fetchedAt }
+}
+
+/** Busca leads — real quando há chave configurada, DEMO caso contrário. */
+export async function searchPlaces(params: SearchParams): Promise<PlacesSearchResponse> {
+  const fetchedAt = new Date().toISOString()
+  // 1) Modo Supabase (deploy): usa a Edge Function.
+  const viaEdge = await searchViaEdge(params)
+  if (viaEdge) return viaEdge
+  // 2) Modo local com chave de build configurada.
+  if (isGooglePlacesConfigured()) {
+    return { mode: 'live', results: await searchLive(params), query: params, fetchedAt }
+  }
+  // 3) DEMO.
+  return { mode: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
 }
 
 /** Considera "sem site" quando website é vazio, null ou undefined. */
