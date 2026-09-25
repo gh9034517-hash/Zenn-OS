@@ -1,10 +1,15 @@
 // ============================================================
 // Edge Function: places-search
 // Busca real de empresas para prospecção. Duas fontes:
-//   1) OpenStreetMap (Overpass) — GRÁTIS, sem chave, padrão.
+//   1) OpenStreetMap (Photon + Overpass) — GRÁTIS, sem chave, padrão.
 //   2) Google Places (New) — só se houver chave em app_settings.
-// Sem nenhuma delas disponível => { mode: "demo" }.
 // Requer JWT válido (usuário logado).
+//
+// Estratégia OSM (rápida e confiável):
+//   - Geocodifica a cidade via Photon (permite uso em servidor).
+//   - Consulta o Overpass por TAG de categoria (indexada) numa bounding box.
+//   - Filtra por palavra-chave no código quando o nicho é um subconjunto
+//     da categoria (ex.: pizzaria dentro de restaurantes).
 // ============================================================
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
@@ -16,40 +21,46 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+const UA = "ZennOS/1.0 (prospeccao; contato.zennworks@gmail.com)";
 const norm = (s: string) =>
   s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 
-// ---------- OpenStreetMap (grátis) ----------
-const OSM_UA = "ZennOS/1.0 (prospeccao; contato.zennworks@gmail.com)";
+// ---------- OpenStreetMap ----------
+interface Plan { selectors: string[]; keywords: string[] }
 
-// Mapeia nichos comuns (pt-BR) para tags OSM. Além disso, sempre casa pelo nome.
-function osmCategoryFilters(niche: string): string[] {
+// Nicho (pt-BR) -> seletores de tag OSM (busca rápida) + palavras-chave (filtro fino).
+function osmPlan(niche: string): Plan {
   const n = norm(niche);
   const has = (...w: string[]) => w.some((x) => n.includes(x));
-  if (has("pizzar", "pizza")) return ['["amenity"~"restaurant|fast_food"]'];
-  if (has("hamburg", "burger", "lanchonete")) return ['["amenity"~"fast_food|restaurant"]'];
-  if (has("restaurante", "comida", "buffet", "churrasc")) return ['["amenity"="restaurant"]'];
-  if (has("bar", "pub", "boteco", "cervej")) return ['["amenity"~"bar|pub"]'];
-  if (has("cafe", "cafeteria", "confeitaria")) return ['["amenity"="cafe"]'];
-  if (has("padaria", "panific")) return ['["shop"="bakery"]'];
-  if (has("barbear", "barber")) return ['["shop"="hairdresser"]', '["shop"="barber"]'];
-  if (has("salao", "beleza", "cabelei", "estetica", "manicure")) return ['["shop"~"hairdresser|beauty"]', '["beauty"]'];
-  if (has("academia", "fitness", "crossfit", "musculac")) return ['["leisure"="fitness_centre"]', '["sport"="fitness"]'];
-  if (has("pet", "veterin")) return ['["shop"="pet"]', '["amenity"="veterinary"]'];
-  if (has("odont", "dentist", "dental")) return ['["amenity"="dentist"]', '["healthcare"="dentist"]'];
-  if (has("clinica", "medic", "saude", "consultorio")) return ['["amenity"~"clinic|doctors"]', '["healthcare"]'];
-  if (has("farmacia", "drogaria")) return ['["amenity"="pharmacy"]'];
-  if (has("oficina", "mecanic", "autocenter", "auto center", "funilaria")) return ['["shop"="car_repair"]'];
-  if (has("mercado", "supermerc", "merceari", "hortifr")) return ['["shop"~"supermarket|convenience|greengrocer"]'];
-  if (has("roupa", "moda", "boutique", "vestuar")) return ['["shop"~"clothes|boutique|fashion"]'];
-  if (has("otica", "oculos")) return ['["shop"="optician"]'];
-  if (has("tatuagem", "tattoo", "piercing")) return ['["shop"="tattoo"]'];
-  if (has("escola", "curso", "ensino")) return ['["amenity"~"school|college|language_school"]'];
-  if (has("hotel", "pousada", "hostel")) return ['["tourism"~"hotel|guest_house|hostel"]'];
-  if (has("imobiliar", "imovel")) return ['["office"="estate_agent"]', '["shop"="estate_agent"]'];
-  if (has("advocacia", "advogad", "juridic")) return ['["office"="lawyer"]'];
-  if (has("contabil", "contador")) return ['["office"="accountant"]'];
-  return []; // sem categoria mapeada: só casa pelo nome
+  if (has("pizzar", "pizza")) return { selectors: ['["amenity"~"^(restaurant|fast_food)$"]'], keywords: ["pizza"] };
+  if (has("hamburg", "burger", "lanchonete")) return { selectors: ['["amenity"~"^(fast_food|restaurant)$"]'], keywords: ["hamburg", "burger", "smash", "lanche"] };
+  if (has("restaurante", "comida", "buffet", "churrasc", "marmit")) return { selectors: ['["amenity"="restaurant"]'], keywords: [] };
+  if (has("bar", "boteco", "pub", "cervej")) return { selectors: ['["amenity"~"^(bar|pub)$"]'], keywords: [] };
+  if (has("cafe", "cafeteria", "confeitaria")) return { selectors: ['["amenity"="cafe"]'], keywords: [] };
+  if (has("padaria", "panific")) return { selectors: ['["shop"="bakery"]'], keywords: [] };
+  if (has("barbear", "barber")) return { selectors: ['["shop"~"^(hairdresser|barber)$"]'], keywords: [] };
+  if (has("salao", "beleza", "cabelei", "estetica", "manicure")) return { selectors: ['["shop"~"^(hairdresser|beauty)$"]', '["beauty"]'], keywords: [] };
+  if (has("academia", "fitness", "crossfit", "musculac")) return { selectors: ['["leisure"="fitness_centre"]', '["sport"="fitness"]'], keywords: [] };
+  if (has("pet", "veterin")) return { selectors: ['["shop"="pet"]', '["amenity"="veterinary"]'], keywords: [] };
+  if (has("odont", "dentist", "dental")) return { selectors: ['["amenity"="dentist"]', '["healthcare"="dentist"]'], keywords: [] };
+  if (has("clinica", "medic", "consultorio", "saude")) return { selectors: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"clinic|doctor"]'], keywords: [] };
+  if (has("farmacia", "drogaria")) return { selectors: ['["amenity"="pharmacy"]'], keywords: [] };
+  if (has("oficina", "mecanic", "autocenter", "funilaria")) return { selectors: ['["shop"="car_repair"]'], keywords: [] };
+  if (has("lavarapido", "lava rapido", "lava-jato", "estetica automotiva")) return { selectors: ['["shop"="car_repair"]', '["amenity"="car_wash"]'], keywords: [] };
+  if (has("mercado", "supermerc", "merceari", "hortifr", "adega")) return { selectors: ['["shop"~"^(supermarket|convenience|greengrocer)$"]'], keywords: [] };
+  if (has("roupa", "moda", "boutique", "vestuar")) return { selectors: ['["shop"~"^(clothes|boutique|fashion)$"]'], keywords: [] };
+  if (has("otica", "oculos")) return { selectors: ['["shop"="optician"]'], keywords: [] };
+  if (has("tatuagem", "tattoo", "piercing")) return { selectors: ['["shop"="tattoo"]'], keywords: [] };
+  if (has("escola", "curso", "ensino", "idiomas")) return { selectors: ['["amenity"~"^(school|college|language_school)$"]'], keywords: [] };
+  if (has("hotel", "pousada", "hostel", "motel")) return { selectors: ['["tourism"~"^(hotel|guest_house|hostel|motel)$"]'], keywords: [] };
+  if (has("imobiliar", "imovel", "corretor")) return { selectors: ['["office"="estate_agent"]', '["shop"="estate_agent"]'], keywords: [] };
+  if (has("advocacia", "advogad", "juridic")) return { selectors: ['["office"="lawyer"]'], keywords: [] };
+  if (has("contabil", "contador", "contabilidade")) return { selectors: ['["office"="accountant"]'], keywords: [] };
+  if (has("sorvet", "acai", "gelateria")) return { selectors: ['["amenity"~"^(ice_cream|cafe)$"]', '["cuisine"~"ice_cream"]'], keywords: [] };
+  if (has("floricultura", "flores")) return { selectors: ['["shop"="florist"]'], keywords: [] };
+  if (has("joalheria", "joias", "relojoaria")) return { selectors: ['["shop"~"^(jewelry|watches)$"]'], keywords: [] };
+  // Sem categoria mapeada: usa o nome como filtro (mais lento, best-effort).
+  return { selectors: [], keywords: [norm(niche).split(/\s+/)[0]] };
 }
 
 interface OsmEl {
@@ -58,42 +69,61 @@ interface OsmEl {
   tags?: Record<string, string>;
 }
 
+// Geocodifica a cidade (Photon, baseado em OSM, permite uso em servidor).
 async function geocodeCity(city: string): Promise<{ lat: number; lon: number } | null> {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(city)}`;
-  const res = await fetch(url, { headers: { "User-Agent": OSM_UA, "Accept-Language": "pt-BR" } });
+  const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(city + ", Brasil")}&limit=1&lang=pt`;
+  const res = await fetch(url, { headers: { "User-Agent": UA } });
   if (!res.ok) return null;
-  const data = (await res.json()) as Array<{ lat: string; lon: string }>;
-  if (!data.length) return null;
-  return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
+  const data = await res.json();
+  const f = data?.features?.[0];
+  if (!f?.geometry?.coordinates) return null;
+  const [lon, lat] = f.geometry.coordinates;
+  return { lat, lon };
 }
 
 function osmAddress(t: Record<string, string>, fallbackCity: string) {
   const street = [t["addr:street"], t["addr:housenumber"]].filter(Boolean).join(", ");
   const parts = [street, t["addr:suburb"] || t["addr:neighbourhood"]].filter(Boolean);
-  return { address: parts.join(" — "), city: t["addr:city"] || fallbackCity };
+  return { address: parts.join(" - "), city: t["addr:city"] || fallbackCity };
 }
 
 async function searchOSM(niche: string, city: string, radiusKm: number) {
   const center = await geocodeCity(city);
   if (!center) return null;
-  const radius = Math.min(Math.max(radiusKm || 10, 1), 50) * 1000;
-  const around = `(around:${radius},${center.lat},${center.lon})`;
-  const nameRe = norm(niche).split(/\s+/)[0]; // primeira palavra do nicho
-  const clauses = [`nwr["name"~"${nameRe}",i]${around};`];
-  for (const cat of osmCategoryFilters(niche)) clauses.push(`nwr${cat}${around};`);
-  const query = `[out:json][timeout:25];(${clauses.join("")});out center tags 80;`;
+
+  const km = Math.min(Math.max(radiusKm || 10, 1), 50);
+  const dLat = km / 111;
+  const dLon = km / (111 * Math.max(Math.cos((center.lat * Math.PI) / 180), 0.2));
+  const bbox = `(${center.lat - dLat},${center.lon - dLon},${center.lat + dLat},${center.lon + dLon})`;
+
+  const plan = osmPlan(niche);
+  let clauses: string[];
+  if (plan.selectors.length) {
+    clauses = plan.selectors.map((s) => `nwr${s}${bbox};`);
+  } else {
+    // Fallback por nome (sem categoria conhecida).
+    const kw = plan.keywords[0] || norm(niche);
+    clauses = [`nwr["name"~"${kw}",i]${bbox};`];
+  }
+  const query = `[out:json][timeout:25];(${clauses.join("")});out center tags 300;`;
 
   const res = await fetch("https://overpass-api.de/api/interpreter", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": OSM_UA },
+    headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": UA },
     body: "data=" + encodeURIComponent(query),
   });
   if (!res.ok) throw new Error(`Overpass HTTP ${res.status}`);
   const data = (await res.json()) as { elements: OsmEl[] };
 
+  const kws = plan.keywords.map(norm);
   const seen = new Set<string>();
   const results = (data.elements ?? [])
     .filter((e) => e.tags?.name)
+    .filter((e) => {
+      if (!kws.length) return true;
+      const hay = norm(`${e.tags!.name} ${e.tags!.cuisine ?? ""}`);
+      return kws.some((k) => hay.includes(k));
+    })
     .filter((e) => {
       const k = norm(e.tags!.name);
       if (seen.has(k)) return false;
@@ -102,32 +132,32 @@ async function searchOSM(niche: string, city: string, radiusKm: number) {
     })
     .map((e) => {
       const t = e.tags!;
-      const { address, city: c } = osmAddress(t, city);
+      const addr = osmAddress(t, city);
       const website = t["website"] || t["contact:website"] || null;
-      const ig = t["contact:instagram"] || t["instagram"] || null;
-      const fb = t["contact:facebook"] || t["facebook"] || null;
       const lat = e.lat ?? e.center?.lat;
       const lon = e.lon ?? e.center?.lon;
       return {
         placeId: `osm_${e.type}_${e.id}`,
         name: t.name,
-        category: t.cuisine || t.shop || t.amenity || t.office || t.leisure || niche,
-        address,
-        city: c,
+        category: t.cuisine || t.shop || t.amenity || t.office || t.leisure || t.tourism || niche,
+        address: addr.address,
+        city: addr.city,
         phone: t["contact:phone"] || t["phone"] || null,
         rating: null,
         reviewsCount: 0,
         website: website && website.trim() ? website : null,
-        googleMapsUrl:
-          lat && lon
-            ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
-            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${t.name} ${c}`)}`,
-        facebook: fb,
-        instagram: ig,
+        googleMapsUrl: lat && lon
+          ? `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`
+          : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t.name + " " + addr.city)}`,
+        facebook: t["contact:facebook"] || t["facebook"] || null,
+        instagram: t["contact:instagram"] || t["instagram"] || null,
         source: "osm" as const,
       };
     });
-  return results.slice(0, 60);
+
+  // Prioriza quem NÃO tem site (foco da prospecção).
+  results.sort((a, b) => Number(!!a.website) - Number(!!b.website));
+  return results.slice(0, 80);
 }
 
 // ---------- Google Places (opcional, pago) ----------
@@ -203,13 +233,12 @@ Deno.serve(async (req) => {
     const rows = (await r.json()) as Array<{ value: string | null }>;
     const key = rows?.[0]?.value?.trim();
 
-    // Google se houver chave; senão OpenStreetMap (grátis).
     if (key) {
       const results = await searchGoogle(niche, city, Number(radiusKm), key);
       return json({ mode: "live", source: "google", results });
     }
     const osm = await searchOSM(niche, city, Number(radiusKm));
-    if (osm === null) return json({ error: "Cidade não encontrada no OpenStreetMap." }, 404);
+    if (osm === null) return json({ error: "Cidade nao encontrada." }, 404);
     return json({ mode: "live", source: "osm", results: osm });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
