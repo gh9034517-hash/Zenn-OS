@@ -129,13 +129,58 @@ create index if not exists transactions_client_idx on public.transactions(client
 create index if not exists transactions_date_idx on public.transactions(date);
 create index if not exists activities_created_idx on public.activities(created_at desc);
 
--- Row Level Security: somente usuários autenticados (Supabase Auth) acessam.
+-- ============================================================
+-- Row Level Security: somente MEMBROS AUTORIZADOS acessam.
+--
+-- Não basta exigir "authenticated": o cadastro público do Supabase Auth
+-- costuma ficar aberto, então qualquer pessoa criaria uma conta, confirmaria
+-- o próprio e-mail e leria toda a base. O acesso é liberado apenas para quem
+-- está em public.app_members.
+-- ============================================================
+create table if not exists public.app_members (
+  user_id  uuid primary key references auth.users(id) on delete cascade,
+  email    text,
+  added_at timestamptz not null default now()
+);
+
+alter table public.app_members enable row level security;
+
+-- Cada membro vê apenas o próprio registro. Não existe policy de escrita,
+-- então ninguém se auto-adiciona: só o service_role (painel) inclui membros.
+drop policy if exists app_members_self_read on public.app_members;
+create policy app_members_self_read on public.app_members
+  for select to authenticated
+  using (auth.uid() = user_id);
+
+-- SECURITY DEFINER para consultar app_members sem esbarrar na RLS dela.
+create or replace function public.is_app_member()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.app_members m where m.user_id = auth.uid());
+$$;
+
+revoke all on function public.is_app_member() from public;
+grant execute on function public.is_app_member() to authenticated;
+
 do $$
 declare t text;
 begin
-  foreach t in array array['leads','clients','projects','tasks','transactions','payments','activities'] loop
+  foreach t in array array[
+    'leads','clients','projects','tasks','transactions','payments','activities','app_settings'
+  ] loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists "authenticated_all" on public.%I', t);
-    execute format('create policy "authenticated_all" on public.%I for all to authenticated using (true) with check (true)', t);
+    execute format('drop policy if exists "members_all" on public.%I', t);
+    execute format(
+      'create policy "members_all" on public.%I for all to authenticated '
+      'using (public.is_app_member()) with check (public.is_app_member())', t);
   end loop;
 end $$;
+
+-- Para liberar uma pessoa nova (rode no SQL Editor do Supabase):
+--   insert into public.app_members (user_id, email)
+--   select id, email from auth.users where email = 'pessoa@empresa.com';
