@@ -17,6 +17,86 @@ import { importSnapshot, type Snapshot } from '@/services/database'
 import { downloadFile } from '@/utils/csv'
 import { GOOGLE_KEY, getSetting, setSetting } from '@/services/appSettings'
 
+function PasswordCard() {
+  const toast = useToast()
+  const { changePassword } = useSession()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [next, setNext] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const tooShort = next.length > 0 && next.length < 8
+  const mismatch = confirm.length > 0 && next !== confirm
+  const canSave =
+    !!currentPassword && next.length >= 8 && next === confirm && !busy && integrations.supabase
+
+  const save = async () => {
+    setBusy(true)
+    try {
+      await changePassword(currentPassword, next)
+      setCurrentPassword('')
+      setNext('')
+      setConfirm('')
+      toast.success('Senha alterada. Use a nova senha no próximo acesso.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível alterar a senha.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader eyebrow="Conta · segurança" title="Alterar senha" />
+      <CardBody className="space-y-4">
+        <p className="text-sm text-muted">
+          Troque a senha de acesso ao Zenn OS. Ela é verificada e guardada pelo
+          <span className="text-fg"> Supabase Auth</span> (criptografada) — o sistema nunca salva sua senha no
+          navegador nem no código.
+        </p>
+        {!integrations.supabase && (
+          <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
+            Disponível apenas no modo Supabase (login real). Neste modo local não há senha.
+          </p>
+        )}
+        <FormField label="Senha atual">
+          <Input
+            type="password"
+            autoComplete="current-password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="••••••••"
+            disabled={!integrations.supabase}
+          />
+        </FormField>
+        <FormField label="Nova senha" hint={tooShort ? 'Use pelo menos 8 caracteres.' : undefined}>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            placeholder="Mínimo de 8 caracteres"
+            disabled={!integrations.supabase}
+          />
+        </FormField>
+        <FormField label="Repetir nova senha" hint={mismatch ? 'As senhas não conferem.' : undefined}>
+          <Input
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Repita a nova senha"
+            disabled={!integrations.supabase}
+          />
+        </FormField>
+        <Button variant="primary" loading={busy} disabled={!canSave} onClick={save}>
+          Alterar senha
+        </Button>
+      </CardBody>
+    </Card>
+  )
+}
+
 function GoogleKeyCard() {
   const toast = useToast()
   const [current, setCurrent] = useState<string | null>(null)
@@ -222,6 +302,8 @@ export default function Settings() {
               detail={integrations.meta ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.` : 'Sem token: o enriquecimento no detalhe do lead retorna dados DEMO.'} />
           </CardBody>
         </Card>
+
+        <PasswordCard />
 
         <GoogleKeyCard />
 

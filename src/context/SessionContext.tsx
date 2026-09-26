@@ -17,6 +17,8 @@ interface SessionContextValue {
   signInLocal: (name: string, email: string) => void
   signInSupabase: (email: string, password: string) => Promise<void>
   updateProfile: (patch: Partial<Pick<Session, 'name' | 'email'>>) => void
+  /** Troca a senha do usuário logado (somente modo Supabase). */
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -63,6 +65,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })
     },
     updateProfile: (patch) => session && persist({ ...session, ...patch }),
+    changePassword: async (currentPassword, newPassword) => {
+      const sb = getSupabase()
+      if (!sb || !integrations.supabase) {
+        throw new Error('Troca de senha disponível apenas no modo Supabase (login real).')
+      }
+      if (!session?.email) throw new Error('Nenhuma sessão ativa.')
+      if (newPassword.length < 8) throw new Error('A nova senha precisa ter pelo menos 8 caracteres.')
+      // Reconfere a senha atual antes de trocar: o Supabase permite atualizar
+      // com a sessão já aberta, então sem esta checagem qualquer pessoa com o
+      // aparelho desbloqueado trocaria a senha sem conhecer a antiga.
+      const { error: checkError } = await sb.auth.signInWithPassword({
+        email: session.email,
+        password: currentPassword,
+      })
+      if (checkError) throw new Error('Senha atual incorreta.')
+      const { error } = await sb.auth.updateUser({ password: newPassword })
+      if (error) throw error
+    },
     signOut: async () => {
       if (session?.mode === 'supabase') await getSupabase()?.auth.signOut()
       persist(null)
