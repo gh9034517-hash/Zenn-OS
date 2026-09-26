@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { ArrowRight, Mail, User, Lock } from 'lucide-react'
 import { Mascot } from '@/components/brand/Mascot'
 import { Logo } from '@/components/brand/Logo'
+import { asset } from '@/utils/asset'
 import { Button } from '@/components/ui/Button'
 import { FormField, Input } from '@/components/ui/Field'
 import { useSession } from '@/context/SessionContext'
@@ -41,9 +42,9 @@ export default function Login() {
       <section className="relative hidden overflow-hidden border-r border-line lg:block">
         <div className="absolute inset-0 flex flex-col items-center justify-center px-10">
           <img
-            src="/brand/zenn-logo-full.webp"
+            src={asset('brand/zenn-logo-full.webp')}
             alt="Zenn Works — Ideias → Código → Resultados"
-            className="w-full max-w-[620px] animate-fade-in mix-blend-screen [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_80%)]"
+            className="pointer-events-none w-full max-w-[620px] animate-fade-in mix-blend-screen [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_80%)]"
           />
           <p className="eyebrow mt-2">Prospecção · CRM · Projetos · Financeiro</p>
         </div>

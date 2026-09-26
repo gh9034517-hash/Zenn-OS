@@ -63,18 +63,20 @@ export default function Dashboard() {
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <Stat label="Leads" value={formatNumber(m.funnel.total)} hint={`${m.funnel.contacted} contatados`} icon={<Contact />} />
+        <Stat to="/leads" label="Leads" value={formatNumber(m.funnel.total)} hint={`${m.funnel.contacted} contatados`} icon={<Contact />} />
         <Stat
+          to="/leads?semSite=1"
           label="Leads sem site"
           value={formatNumber(m.funnel.withoutSite)}
           hint={formatPercent(m.funnel.total ? m.funnel.withoutSite / m.funnel.total : 0, 0) + ' da base'}
           icon={<GlobeLock />}
           style={{ animationDelay: '40ms' }}
         />
-        <Stat label="Clientes" value={formatNumber(m.clientsCount)} hint={`Conversão ${formatPercent(m.conversionRate)}`} icon={<Users />} style={{ animationDelay: '80ms' }} />
-        <Stat label="Projetos ativos" value={formatNumber(m.activeProjectsCount)} hint="Fora de concluído" icon={<Briefcase />} style={{ animationDelay: '120ms' }} />
-        <Stat emphasis label="Receita" value={formatCurrencyCompact(m.finance.received)} hint={`${formatCurrency(m.finance.received)} recebidos`} icon={<CircleDollarSign />} style={{ animationDelay: '160ms' }} />
+        <Stat to="/clientes" label="Clientes" value={formatNumber(m.clientsCount)} hint={`Conversão ${formatPercent(m.conversionRate)}`} icon={<Users />} style={{ animationDelay: '80ms' }} />
+        <Stat to="/projetos" label="Projetos ativos" value={formatNumber(m.activeProjectsCount)} hint="Fora de concluído" icon={<Briefcase />} style={{ animationDelay: '120ms' }} />
+        <Stat to="/financeiro" emphasis label="Receita" value={formatCurrencyCompact(m.finance.received)} hint={`${formatCurrency(m.finance.received)} recebidos`} icon={<CircleDollarSign />} style={{ animationDelay: '160ms' }} />
         <Stat
+          to="/financeiro"
           label="Pendente"
           value={formatCurrencyCompact(m.finance.pending + m.finance.overdue)}
           hint={m.finance.overdue ? `${formatCurrencyCompact(m.finance.overdue)} em atraso` : 'Nada em atraso'}

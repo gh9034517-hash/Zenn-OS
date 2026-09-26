@@ -1,4 +1,5 @@
 import { cn } from '@/utils/cn'
+import { asset } from '@/utils/asset'
 
 /**
  * Zennzinho — mascote oficial da Zenn Works (artes em /public/brand).
@@ -10,9 +11,9 @@ import { cn } from '@/utils/cn'
 type Variant = 'auto' | 'mark' | 'head' | 'desk'
 
 const SRC = {
-  mark: '/brand/zennzinho-mark.webp',
-  head: '/brand/zennzinho-head.webp',
-  desk: '/brand/zennzinho-desk.webp',
+  mark: asset('brand/zennzinho-mark.webp'),
+  head: asset('brand/zennzinho-head.webp'),
+  desk: asset('brand/zennzinho-desk.webp'),
 }
 
 export function Mascot({
@@ -50,7 +51,9 @@ export function Mascot({
       alt="Zennzinho, mascote da Zenn Works"
       draggable={false}
       className={cn(
-        'shrink-0 object-contain mix-blend-screen select-none [mask-image:radial-gradient(ellipse_at_center,black_55%,transparent_78%)]',
+        // pointer-events-none: a arte é decorativa e nunca deve interceptar
+        // cliques dos botões que ficam por perto (ou por baixo).
+        'pointer-events-none shrink-0 object-contain mix-blend-screen select-none [mask-image:radial-gradient(ellipse_at_center,black_55%,transparent_78%)]',
         animated && v === 'mark' && 'animate-float',
         className,
       )}
