@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle, SlidersHorizontal } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -48,6 +48,8 @@ export default function FindLeads() {
   const [withPhone, setWithPhone] = useState(false)
   const [minRating, setMinRating] = useState('0')
   const [minReviews, setMinReviews] = useState('')
+  const [showFilters, setShowFilters] = useState(false)
+  const extraFiltersCount = (withPhone ? 1 : 0) + (Number(minRating) > 0 ? 1 : 0) + (Number(minReviews) > 0 ? 1 : 0)
   const [preview, setPreview] = useState<PlaceResult | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -160,20 +162,47 @@ export default function FindLeads() {
           </Button>
         </form>
 
-        <div className="mt-4 grid gap-2 border-t border-line pt-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Toggle checked={onlyNoSite} onChange={setOnlyNoSite} label="Somente sem site" description={response ? `${noSiteCount} de ${response.results.length}` : 'website vazio'} />
-          <Toggle checked={withPhone} onChange={setWithPhone} label="Com telefone" description="Descarta sem número" />
-          <FormField label="Nota mínima">
-            <Select value={minRating} onChange={(e) => setMinRating(e.target.value)}>
-              <option value="0">Qualquer nota</option>
-              <option value="3.5">3,5 ou mais</option>
-              <option value="4">4,0 ou mais</option>
-              <option value="4.5">4,5 ou mais</option>
-            </Select>
-          </FormField>
-          <FormField label="Mínimo de avaliações">
-            <Input type="number" min={0} value={minReviews} onChange={(e) => setMinReviews(e.target.value)} placeholder="0" />
-          </FormField>
+        {/* O filtro "sem site" é o coração da prospecção, então fica sempre à
+            vista. Os demais são refinamento e ficam recolhidos, para a tela
+            não competir com os resultados — principalmente no celular. */}
+        <div className="mt-4 border-t border-line pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Toggle
+              checked={onlyNoSite}
+              onChange={setOnlyNoSite}
+              label="Somente sem site"
+              description={response ? `${noSiteCount} de ${response.results.length}` : 'as melhores oportunidades'}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              icon={<SlidersHorizontal className="size-3.5" />}
+              onClick={() => setShowFilters((v) => !v)}
+            >
+              {showFilters ? 'Menos filtros' : 'Mais filtros'}
+              {!showFilters && extraFiltersCount > 0 && (
+                <span className="ml-1.5 rounded-full bg-white px-1.5 font-mono text-[10px] text-black">{extraFiltersCount}</span>
+              )}
+            </Button>
+          </div>
+
+          {showFilters && (
+            <div className="mt-3 grid animate-fade-in gap-2 sm:grid-cols-2 xl:grid-cols-3">
+              <Toggle checked={withPhone} onChange={setWithPhone} label="Com telefone" description="Descarta sem número" />
+              <FormField label="Nota mínima">
+                <Select value={minRating} onChange={(e) => setMinRating(e.target.value)}>
+                  <option value="0">Qualquer nota</option>
+                  <option value="3.5">3,5 ou mais</option>
+                  <option value="4">4,0 ou mais</option>
+                  <option value="4.5">4,5 ou mais</option>
+                </Select>
+              </FormField>
+              <FormField label="Mínimo de avaliações">
+                <Input type="number" min={0} value={minReviews} onChange={(e) => setMinReviews(e.target.value)} placeholder="0" />
+              </FormField>
+            </div>
+          )}
         </div>
       </Card>
 
@@ -230,7 +259,61 @@ export default function FindLeads() {
             {filtered.length === 0 ? (
               <EmptyState mascot={false} title="Nenhum resultado com esses filtros" description="Afrouxe a nota mínima ou o mínimo de avaliações." />
             ) : (
-              <div className="overflow-x-auto">
+              <>
+              {/* Celular: cartões. A tabela precisa de 980px e virava rolagem
+                  lateral, escondendo justamente os botões de ação. */}
+              <ul className="divide-y divide-line lg:hidden">
+                {filtered.map((r, i) => {
+                  const saved = findLeadByPlace(r.placeId)
+                  const busy = busyId === r.placeId
+                  const semSite = hasNoWebsite(r.website)
+                  return (
+                    <li
+                      key={r.placeId}
+                      className={cn('animate-fade-in px-4 py-4', semSite && 'bg-white/[0.015]')}
+                      style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <button onClick={() => setPreview(r)} className="min-w-0 flex-1 text-left">
+                          <p className="truncate font-medium text-fg">{r.name}</p>
+                          <p className="truncate text-xs text-muted">
+                            {r.category}
+                            {r.address ? ` · ${r.address}` : ''}
+                          </p>
+                        </button>
+                        <WebsiteBadge website={r.website} />
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+                        <Rating value={r.rating} />
+                        {r.reviewsCount > 0 && <span className="font-mono">{formatNumber(r.reviewsCount)} aval.</span>}
+                        {r.phone ? <span className="font-mono text-fg-soft">{r.phone}</span> : <span className="text-faint">sem telefone</span>}
+                        {saved ? <LeadStatusBadge status={saved.status} /> : null}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        <Button size="sm" variant="primary" icon={<MessageCircle className="size-3.5" />} onClick={() => workflow.contact(r)}>
+                          Contatar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={saved ? 'ghost' : 'secondary'}
+                          loading={busy}
+                          icon={saved ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
+                          onClick={() => run(r.placeId, () => workflow.save(r))}
+                        >
+                          {saved ? 'Salvo' : 'Salvar'}
+                        </Button>
+                        <Button size="sm" variant="outline" icon={<Eye className="size-3.5" />} onClick={() => setPreview(r)}>
+                          Ver
+                        </Button>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-line text-left">
@@ -291,6 +374,7 @@ export default function FindLeads() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </>
         )}
