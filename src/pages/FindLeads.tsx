@@ -20,13 +20,37 @@ import { formatNumber, formatRelative } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
 const LAST_SEARCH_KEY = 'zenn-os:last-search'
+const LAST_CITY_KEY = 'zenn-os:last-city'
 
+/** Nichos mais prospectados — evitam digitar no celular. */
+const NICHOS_RAPIDOS = [
+  'Pizzarias',
+  'Barbearias',
+  'Salões de beleza',
+  'Padarias',
+  'Restaurantes',
+  'Academias',
+  'Oficinas',
+  'Pet shops',
+  'Clínicas',
+  'Lanchonetes',
+]
+
+/** A última busca ficava em sessionStorage e sumia ao fechar o navegador. */
 function readLastSearch(): PlacesSearchResponse | null {
   try {
-    const raw = sessionStorage.getItem(LAST_SEARCH_KEY)
+    const raw = localStorage.getItem(LAST_SEARCH_KEY) ?? sessionStorage.getItem(LAST_SEARCH_KEY)
     return raw ? (JSON.parse(raw) as PlacesSearchResponse) : null
   } catch {
     return null
+  }
+}
+
+function readLastCity(): string {
+  try {
+    return localStorage.getItem(LAST_CITY_KEY) ?? ''
+  } catch {
+    return ''
   }
 }
 
@@ -38,13 +62,14 @@ export default function FindLeads() {
   const last = readLastSearch()
 
   const [niche, setNiche] = useState(last?.query.niche ?? '')
-  const [city, setCity] = useState(last?.query.city ?? '')
+  const [city, setCity] = useState(last?.query.city ?? readLastCity())
   const [radius, setRadius] = useState(String(last?.query.radiusKm ?? 10))
   const [response, setResponse] = useState<PlacesSearchResponse | null>(last)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [onlyNoSite, setOnlyNoSite] = useState(false)
+  // Ligado por padrão: a ferramenta existe para achar quem NÃO tem site.
+  const [onlyNoSite, setOnlyNoSite] = useState(true)
   const [withPhone, setWithPhone] = useState(false)
   const [minRating, setMinRating] = useState('0')
   const [minReviews, setMinReviews] = useState('')
@@ -52,16 +77,21 @@ export default function FindLeads() {
   const extraFiltersCount = (withPhone ? 1 : 0) + (Number(minRating) > 0 ? 1 : 0) + (Number(minReviews) > 0 ? 1 : 0)
   const [preview, setPreview] = useState<PlaceResult | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [savingAll, setSavingAll] = useState(false)
 
-  const submit = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!niche.trim() || !city.trim()) return
+  const buscar = async (nichoBusca: string, cidadeBusca: string) => {
+    if (!nichoBusca.trim() || !cidadeBusca.trim()) return
     setLoading(true)
     setError(null)
     try {
-      const res = await searchPlaces({ niche: niche.trim(), city: city.trim(), radiusKm: Number(radius) || 10 })
+      const res = await searchPlaces({ niche: nichoBusca.trim(), city: cidadeBusca.trim(), radiusKm: Number(radius) || 10 })
       setResponse(res)
-      sessionStorage.setItem(LAST_SEARCH_KEY, JSON.stringify(res))
+      try {
+        localStorage.setItem(LAST_SEARCH_KEY, JSON.stringify(res))
+        localStorage.setItem(LAST_CITY_KEY, cidadeBusca.trim())
+      } catch {
+        /* armazenamento indisponível: a busca continua valendo */
+      }
       const fonte =
         res.mode === 'demo'
           ? 'DEMO MODE — dados fictícios'
@@ -74,6 +104,17 @@ export default function FindLeads() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    void buscar(niche, city)
+  }
+
+  /** Atalho de nicho: já dispara a busca quando a cidade está preenchida. */
+  const usarNicho = (n: string) => {
+    setNiche(n)
+    if (city.trim()) void buscar(n, city)
   }
 
   const filtered = useMemo(() => {
@@ -90,6 +131,30 @@ export default function FindLeads() {
   }, [response, onlyNoSite, withPhone, minRating, minReviews])
 
   const noSiteCount = response?.results.filter((r) => hasNoWebsite(r.website)).length ?? 0
+
+  // Salvar em lote: o fluxo antigo obrigava a salvar um por um.
+  const naoSalvos = useMemo(() => filtered.filter((r) => !findLeadByPlace(r.placeId)), [filtered, findLeadByPlace])
+
+  const salvarTodos = async () => {
+    if (!naoSalvos.length) return
+    setSavingAll(true)
+    let ok = 0
+    try {
+      // Em série: o provedor Supabase faz uma escrita por lead e uma rajada
+      // paralela de dezenas de inserts costuma ser barrada por rate limit.
+      for (const r of naoSalvos) {
+        try {
+          await workflow.save(r)
+          ok++
+        } catch {
+          /* segue para o próximo; o total informado no fim reflete o real */
+        }
+      }
+      toast.success(`${ok} leads salvos no CRM`, ok < naoSalvos.length ? `${naoSalvos.length - ok} falharam` : undefined)
+    } finally {
+      setSavingAll(false)
+    }
+  }
 
   const run = async (id: string, fn: () => Promise<unknown>) => {
     setBusyId(id)
@@ -161,6 +226,26 @@ export default function FindLeads() {
             Buscar
           </Button>
         </form>
+
+        {/* Atalhos: digitar nicho no celular é o passo mais chato do fluxo.
+            Com a cidade preenchida, um toque já dispara a busca. */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {NICHOS_RAPIDOS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => usarNicho(n)}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-xs transition-colors',
+                niche.toLowerCase() === n.toLowerCase()
+                  ? 'border-white/60 bg-white text-black'
+                  : 'border-line text-muted hover:border-white/30 hover:text-fg',
+              )}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
 
         {/* O filtro "sem site" é o coração da prospecção, então fica sempre à
             vista. Os demais são refinamento e ficam recolhidos, para a tela
@@ -251,9 +336,22 @@ export default function FindLeads() {
                 )}
                 <span className="text-xs text-faint">{formatRelative(response.fetchedAt)}</span>
               </div>
-              <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportFiltered} disabled={!filtered.length}>
-                Exportar CSV
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={savingAll}
+                  icon={<Bookmark className="size-3.5" />}
+                  onClick={salvarTodos}
+                  disabled={!naoSalvos.length}
+                  title={naoSalvos.length ? `Salvar ${naoSalvos.length} leads no CRM` : 'Todos já estão salvos'}
+                >
+                  Salvar {naoSalvos.length ? `${naoSalvos.length} ` : ''}no CRM
+                </Button>
+                <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportFiltered} disabled={!filtered.length}>
+                  <span className="hidden sm:inline">Exportar </span>CSV
+                </Button>
+              </div>
             </div>
 
             {filtered.length === 0 ? (
