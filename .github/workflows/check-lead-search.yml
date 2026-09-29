@@ -1,0 +1,48 @@
+name: Verificar busca de leads
+
+# Roda a busca real (OpenStreetMap) com internet aberta e confere se os
+# servidores de mapa liberam acesso a partir do site publicado (CORS).
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/zenn-os-build-g2subh]
+    paths:
+      - 'src/services/osmSearch.ts'
+      - 'scripts/check-lead-search.mts'
+      - '.github/workflows/check-lead-search.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: CORS a partir do site publicado
+        run: |
+          ORIGIN="Origin: https://gh9034517-hash.github.io"
+          for u in \
+            "https://photon.komoot.io/api/?q=Campinas&limit=1" \
+            "https://nominatim.openstreetmap.org/search?city=Campinas&countrycodes=br&format=jsonv2&limit=1"; do
+            echo "== GET $u"
+            curl -s -m 20 -o /dev/null -D - -H "$ORIGIN" "$u" | grep -iE '^(HTTP|access-control-allow-origin)' || echo "(sem resposta)"
+          done
+          for ep in \
+            https://overpass-api.de/api/interpreter \
+            https://overpass.private.coffee/api/interpreter \
+            https://overpass.kumi.systems/api/interpreter; do
+            echo "== POST $ep"
+            curl -s -m 40 -o /dev/null -D - -H "$ORIGIN" \
+              --data-urlencode 'data=[out:json][timeout:10];node(1);out;' "$ep" \
+              | grep -iE '^(HTTP|access-control-allow-origin)' || echo "(sem resposta)"
+          done
+
+      - name: Busca real com o código do app
+        run: npx --yes tsx scripts/check-lead-search.mts

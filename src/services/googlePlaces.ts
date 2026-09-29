@@ -2,15 +2,13 @@
 // Google Places API (New) — Text Search
 // https://developers.google.com/maps/documentation/places/web-service/text-search
 //
-// Com GOOGLE_MAPS_API_KEY configurada a busca é REAL.
-// Sem a chave, resultados DEMO (fictícios) são gerados e marcados
-// com source: 'demo' — a interface exibe "DEMO MODE".
+// Busca de empresas. Nunca inventa dados: sem Google configurado, a busca
+// usa o OpenStreetMap (real e gratuito); se nenhuma fonte responder, lança
+// erro para a tela mostrar — em vez de preencher com empresas fictícias.
 // ============================================================
 
 import type { PlaceResult, SearchParams } from '@/types'
 import { env, integrations } from '@/lib/env'
-import { hashString, seededRandom } from '@/utils/id'
-import { DEMO_STREETS, slug } from '@/data/demo'
 
 const ENDPOINT = 'https://places.googleapis.com/v1/places:searchText'
 
@@ -30,12 +28,16 @@ const FIELD_MASK = [
 ].join(',')
 
 export interface PlacesSearchResponse {
-  mode: 'live' | 'demo'
-  /** Fonte dos dados quando ao vivo: Google (pago) ou OpenStreetMap (grátis). */
-  source?: 'google' | 'osm' | 'demo'
+  mode: 'live'
+  /** Fonte dos dados: Google (pago, opcional) ou OpenStreetMap (grátis). */
+  source: 'google' | 'osm'
   results: PlaceResult[]
   query: SearchParams
   fetchedAt: string
+  /** Cidade como o mapa entendeu (ex.: "São Paulo · São Paulo"). */
+  resolvedCity?: string
+  /** Aviso quando uma fonte falhou e outra real assumiu. */
+  notice?: string
 }
 
 export const isGooglePlacesConfigured = () => integrations.googlePlaces
@@ -135,60 +137,6 @@ async function searchLive(params: SearchParams): Promise<PlaceResult[]> {
   return results
 }
 
-// ------------------------------------------------------------
-// DEMO
-// ------------------------------------------------------------
-const DEMO_SUFFIXES = [
-  'Central', 'do Bairro', 'Premium', 'Express', 'da Praça', 'Família', 'Artesanal', 'Prime',
-  'Nova Era', 'Tradição', 'Top', 'Master', 'da Vila', 'Real', 'Imperial', 'Primavera',
-  'Estação', 'Ponto Certo', 'Bom Gosto', 'Villa', 'Mix', 'Point', 'Clássica', 'Moderna',
-  'Aurora', 'Horizonte', 'Jardim', 'Paulista', 'Brasil', 'Dom Pedro', 'Bela Vista', 'Da Esquina',
-  'Gourmet', 'Império', 'São José', 'Santa Rita', 'Vitória', 'Esperança', 'Boa Vista', 'Norte',
-]
-const DEMO_NEIGHBORHOODS = ['Cambuí', 'Centro', 'Taquaral', 'Barão Geraldo', 'Guanabara', 'Castelo', 'Botafogo', 'Nova Campinas', 'Jardim Proença', 'Vila Industrial']
-
-function singular(niche: string) {
-  return niche
-    .trim()
-    .split(/\s+/)
-    .map((w) => (w.length > 4 && /s$/i.test(w) ? w.slice(0, -1) : w))
-    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w.toLowerCase()))
-    .join(' ')
-}
-
-export function generateDemoPlaces(params: SearchParams): PlaceResult[] {
-  const rand = seededRandom(hashString(`${params.niche}|${params.city}|${params.radiusKm}`.toLowerCase()))
-  const int = (min: number, max: number) => Math.floor(rand() * (max - min + 1)) + min
-  const category = singular(params.niche || 'Empresa')
-  const city = params.city.trim() || 'Campinas'
-  const count = Math.min(40, Math.max(10, Math.round(12 + params.radiusKm * 1.1)))
-  const suffixes = [...DEMO_SUFFIXES].sort(() => rand() - 0.5)
-  const ddd = city.toLowerCase().includes('paulo') ? '11' : '19'
-
-  return Array.from({ length: count }, (_, i) => {
-    const suffix = suffixes[i % suffixes.length]
-    const name = `${category} ${suffix}`
-    const s = slug(`${name}${city}`)
-    // ~60% sem site para exercitar o filtro SEM SITE
-    const hasSite = rand() > 0.6
-    return {
-      placeId: `demo_${s}_${i}`,
-      name,
-      category,
-      address: `${DEMO_STREETS[int(0, DEMO_STREETS.length - 1)]}, ${int(20, 3200)} — ${DEMO_NEIGHBORHOODS[int(0, DEMO_NEIGHBORHOODS.length - 1)]}`,
-      city,
-      phone: rand() > 0.15 ? `(${ddd}) 9${int(8000, 9999)}-${int(1000, 9999)}` : null,
-      rating: rand() > 0.05 ? Math.round((3.2 + rand() * 1.8) * 10) / 10 : null,
-      reviewsCount: int(0, 1800),
-      website: hasSite ? `https://www.${slug(name)}.com.br` : null,
-      googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${name} ${city}`)}`,
-      facebook: rand() > 0.55 ? `https://facebook.com/${slug(name)}` : null,
-      instagram: rand() > 0.35 ? `@${slug(name)}` : null,
-      source: 'demo' as const,
-    }
-  })
-}
-
 /**
  * Google Places via Edge Function do Supabase (proxy). Só é usada quando há
  * chave do Google gravada em app_settings — a chave fica no servidor e o
@@ -218,7 +166,7 @@ async function searchGoogleViaEdge(params: SearchParams): Promise<PlacesSearchRe
   if (body.mode !== 'live') return null
   return {
     mode: 'live',
-    source: body.source === 'google' ? 'google' : 'osm',
+    source: 'google',
     results: body.results as PlaceResult[],
     query: params,
     fetchedAt,
@@ -227,37 +175,37 @@ async function searchGoogleViaEdge(params: SearchParams): Promise<PlacesSearchRe
 
 /**
  * Busca leads. Ordem de preferência:
- *   1) Google Places (chave de build) — local dev com chave.
- *   2) Google Places via Edge (chave gravada em app_settings) — pago, opcional.
- *   3) OpenStreetMap no navegador — GRÁTIS, é o padrão.
- *   4) DEMO — só se a busca grátis falhar/retornar vazio.
+ *   1) Google Places (chave de build) — desenvolvimento local com chave.
+ *   2) Google Places via Edge (chave gravada em app_settings) — opcional.
+ *   3) OpenStreetMap no navegador — grátis, é o padrão.
+ * Se o Google falhar, o OpenStreetMap (também real) assume, com aviso.
+ * Se tudo falhar, lança erro. NUNCA devolve dados fictícios.
  */
-export async function searchPlaces(params: SearchParams): Promise<PlacesSearchResponse> {
+export async function searchPlaces(params: SearchParams, signal?: AbortSignal): Promise<PlacesSearchResponse> {
   const fetchedAt = new Date().toISOString()
+  let notice: string | undefined
 
-  // 1) Chave de build (desenvolvimento local com Google).
-  if (isGooglePlacesConfigured()) {
-    return { mode: 'live', source: 'google', results: await searchLive(params), query: params, fetchedAt }
-  }
-
-  // 2) Google via Edge, só quando há chave configurada no servidor.
-  const viaEdge = await searchGoogleViaEdge(params)
-  if (viaEdge) return viaEdge
-
-  // 3) OpenStreetMap direto no navegador (grátis). É o caminho padrão.
   try {
-    const { searchPlacesOSM } = await import('@/services/osmSearch')
-    const results = await searchPlacesOSM(params)
-    if (results.length) {
-      return { mode: 'live', source: 'osm', results, query: params, fetchedAt }
+    if (isGooglePlacesConfigured()) {
+      return { mode: 'live', source: 'google', results: await searchLive(params), query: params, fetchedAt }
     }
-  } catch (err) {
-    // Rede/servidor de mapas indisponível: cai para DEMO com aviso silencioso.
-    console.warn('Busca OSM falhou, usando DEMO:', err)
+    const viaEdge = await searchGoogleViaEdge(params)
+    if (viaEdge) return viaEdge
+  } catch (e) {
+    notice = `Google indisponível (${e instanceof Error ? e.message : 'erro'}). Usando OpenStreetMap.`
   }
 
-  // 4) DEMO.
-  return { mode: 'demo', source: 'demo', results: generateDemoPlaces(params), query: params, fetchedAt }
+  const { searchPlacesOSM } = await import('@/services/osmSearch')
+  const r = await searchPlacesOSM(params, signal)
+  return {
+    mode: 'live',
+    source: 'osm',
+    results: r.results,
+    query: params,
+    fetchedAt: new Date().toISOString(),
+    resolvedCity: r.resolvedCity,
+    notice,
+  }
 }
 
 /** Considera "sem site" quando website é vazio, null ou undefined. */
