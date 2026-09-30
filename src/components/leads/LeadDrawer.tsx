@@ -198,16 +198,17 @@ export function LeadDrawer({ leadId, place, onClose }: { leadId?: string | null;
           </div>
         )}
 
+        {/* Sem token da Meta a consulta só produziria números fictícios —
+            então a seção nem aparece. */}
+        {isMetaConfigured() && (
         <div className="mt-6 rounded-2xl border border-line p-4">
           <div className="flex items-center justify-between gap-2">
             <p className="flex items-center gap-2 text-sm font-medium">
               <Sparkles className="size-4 text-muted" /> Enriquecer com Meta
             </p>
-            {!isMetaConfigured() && <DemoBadge />}
           </div>
           <p className="mt-1 text-xs text-muted">
             Consulta a página via Graph API oficial (seguidores, Instagram vinculado).
-            {!isMetaConfigured() && ' Sem META_ACCESS_TOKEN — resultado fictício.'}
           </p>
           <div className="mt-3 flex gap-2">
             <Input value={metaInput} onChange={(e) => setMetaInput(e.target.value)} placeholder="facebook.com/pagina ou @pagina" />
@@ -225,10 +226,10 @@ export function LeadDrawer({ leadId, place, onClose }: { leadId?: string | null;
                 <p className="text-faint">Instagram {meta.instagramUsername ? `@${meta.instagramUsername}` : ''}</p>
                 <p className="mt-1 font-mono text-base">{meta.instagramFollowers !== null ? formatNumber(meta.instagramFollowers) : '—'}</p>
               </div>
-              {meta.mode === 'demo' && <p className="col-span-2 text-faint">DEMO MODE — números fictícios, não salvos no lead.</p>}
             </div>
           )}
         </div>
+        )}
       </Drawer>
       {workflow.modals}
       {lead && (

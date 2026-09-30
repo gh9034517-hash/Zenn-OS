@@ -1,14 +1,14 @@
 name: Verificar busca de leads
 
-# Roda a busca real (OpenStreetMap) com internet aberta e confere se os
-# servidores de mapa liberam acesso a partir do site publicado (CORS).
+# Roda o código real da busca (OpenStreetMap) dentro de um Chrome, na
+# origem do site publicado — exatamente como o celular do usuário faz.
 on:
   workflow_dispatch:
   push:
     branches: [claude/zenn-os-build-g2subh]
     paths:
       - 'src/services/osmSearch.ts'
-      - 'scripts/check-lead-search.mts'
+      - 'scripts/check-lead-search.mjs'
       - '.github/workflows/check-lead-search.yml'
 
 permissions:
@@ -17,39 +17,19 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: CORS a partir do site publicado
+      - name: Instalar dependências e Chrome
         run: |
-          ORIGIN="Origin: https://gh9034517-hash.github.io"
-          for u in \
-            "https://photon.komoot.io/api/?q=Campinas&limit=1" \
-            "https://nominatim.openstreetmap.org/search?city=Campinas&countrycodes=br&format=jsonv2&limit=1"; do
-            echo "== GET $u"
-            curl -s -m 20 -o /dev/null -D - -H "$ORIGIN" "$u" | grep -iE '^(HTTP|access-control-allow-origin)' || echo "(sem resposta)"
-          done
-          for ep in \
-            https://overpass-api.de/api/interpreter \
-            https://overpass.private.coffee/api/interpreter \
-            https://overpass.kumi.systems/api/interpreter; do
-            echo "== POST $ep"
-            curl -s -m 40 -o /dev/null -D - -H "$ORIGIN" \
-              --data-urlencode 'data=[out:json][timeout:10];node(1);out;' "$ep" \
-              | grep -iE '^(HTTP|access-control-allow-origin)' || echo "(sem resposta)"
-          done
-
-      - name: OpenStreetMap de dentro de um Chrome real (origem do site)
-        continue-on-error: true
-        run: |
-          npm i --no-save --no-package-lock playwright@1
+          npm ci
+          npm i --no-save --no-package-lock playwright@1 esbuild@0
           npx playwright install --with-deps chromium
-          node scripts/check-browser-osm.mjs
 
-      - name: Busca real com o código do app
-        run: npx --yes tsx scripts/check-lead-search.mts
+      - name: Busca real dentro do Chrome
+        run: node scripts/check-lead-search.mjs

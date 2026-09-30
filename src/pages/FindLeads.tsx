@@ -1,10 +1,9 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
-import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle, SlidersHorizontal } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle, SlidersHorizontal, RotateCcw } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge, DemoBadge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui/Badge'
 import { FormField, Input, Select, Toggle } from '@/components/ui/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
@@ -13,13 +12,14 @@ import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBa
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
 import { searchPlaces, hasNoWebsite, type PlacesSearchResponse } from '@/services/googlePlaces'
-import { useGoogleStatus } from '@/hooks/useGoogleStatus'
 import type { PlaceResult } from '@/types'
 import { exportCsv } from '@/utils/csv'
 import { formatNumber, formatRelative } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
-const LAST_SEARCH_KEY = 'zenn-os:last-search'
+// v2: a chave antiga pode guardar resultados DEMO (fictícios) de versões
+// anteriores — trocar o nome descarta esse cache no celular do usuário.
+const LAST_SEARCH_KEY = 'zenn-os:last-search:v2'
 const LAST_CITY_KEY = 'zenn-os:last-city'
 
 /** Nichos mais prospectados — evitam digitar no celular. */
@@ -39,8 +39,12 @@ const NICHOS_RAPIDOS = [
 /** A última busca ficava em sessionStorage e sumia ao fechar o navegador. */
 function readLastSearch(): PlacesSearchResponse | null {
   try {
-    const raw = localStorage.getItem(LAST_SEARCH_KEY) ?? sessionStorage.getItem(LAST_SEARCH_KEY)
-    return raw ? (JSON.parse(raw) as PlacesSearchResponse) : null
+    const raw = localStorage.getItem(LAST_SEARCH_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PlacesSearchResponse
+    // Defesa extra: nunca restaura nada que não seja dado real.
+    if (parsed.mode !== 'live' || parsed.results.some((r) => (r.source as string) === 'demo')) return null
+    return parsed
   } catch {
     return null
   }
@@ -58,7 +62,6 @@ export default function FindLeads() {
   const { findLeadByPlace, leads } = useData()
   const toast = useToast()
   const workflow = useLeadWorkflow()
-  const google = useGoogleStatus()
   const last = readLastSearch()
 
   const [niche, setNiche] = useState(last?.query.niche ?? '')
@@ -92,13 +95,14 @@ export default function FindLeads() {
       } catch {
         /* armazenamento indisponível: a busca continua valendo */
       }
-      const fonte =
-        res.mode === 'demo'
-          ? 'DEMO MODE — dados fictícios'
-          : res.source === 'google'
-            ? 'Google Places API'
-            : 'OpenStreetMap · dados reais e gratuitos'
-      toast.success(`${res.results.length} empresas encontradas`, fonte)
+      const comTel = res.results.filter((r) => r.phone).length
+      const fonte = res.source === 'google' ? 'Google Maps' : 'OpenStreetMap'
+      if (res.results.length) {
+        toast.success(`${res.results.length} empresas encontradas`, `${comTel} com telefone · ${fonte}`)
+      } else {
+        toast.info('Nenhuma empresa encontrada', 'Tente aumentar o raio ou outro nicho')
+      }
+      if (res.notice) toast.info('Aviso', res.notice)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha na busca')
     } finally {
@@ -170,7 +174,7 @@ export default function FindLeads() {
   const exportFiltered = () => {
     if (!filtered.length) return
     const q = response!.query
-    exportCsv(`zenn-leads-${q.niche}-${q.city}${response!.mode === 'demo' ? '-DEMO' : ''}.csv`.replace(/\s+/g, '-').toLowerCase(), filtered, [
+    exportCsv(`zenn-leads-${q.niche}-${q.city}.csv`.replace(/\s+/g, '-').toLowerCase(), filtered, [
       { header: 'Empresa', value: (r) => r.name },
       { header: 'Categoria', value: (r) => r.category },
       { header: 'Endereço', value: (r) => r.address },
@@ -183,7 +187,7 @@ export default function FindLeads() {
       { header: 'Google Maps', value: (r) => r.googleMapsUrl },
       { header: 'Facebook', value: (r) => r.facebook },
       { header: 'Instagram', value: (r) => r.instagram },
-      { header: 'Fonte', value: (r) => (r.source === 'demo' ? 'DEMO (fictício)' : 'Google Places') },
+      { header: 'Fonte', value: (r) => (r.source === 'google_places' ? 'Google Maps' : 'OpenStreetMap') },
     ])
     toast.success('CSV exportado', `${filtered.length} leads`)
   }
@@ -191,22 +195,10 @@ export default function FindLeads() {
   return (
     <>
       <PageHeader
-        eyebrow={<>Prospecção {!google.loading && !google.configured && <DemoBadge label="Demo mode" />}</>}
+        eyebrow="Prospecção"
         title="Encontrar leads"
         description="Busque empresas por nicho e cidade. Quem não tem site aparece destacado — são as melhores oportunidades."
       />
-
-      {!google.loading && !google.configured && (
-        <div className="mb-4 flex animate-fade-in items-start gap-3 rounded-2xl border border-dashed border-white/25 bg-white/[0.02] px-4 py-3 text-sm">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-fg-soft" />
-          <p className="text-muted">
-            <span className="font-medium text-fg">DEMO MODE.</span> Neste modo local os resultados são
-            <span className="text-fg"> fictícios</span>. No app publicado (com Supabase) a busca é
-            <span className="text-fg"> real e gratuita via OpenStreetMap</span> — e você pode, opcionalmente, ativar o Google em{' '}
-            <Link to="/configuracoes" className="text-fg underline decoration-white/30 underline-offset-4">Configurações</Link>.
-          </p>
-        </div>
-      )}
 
       <Card className="p-4 sm:p-5">
         <form onSubmit={submit} className="grid gap-3 md:grid-cols-[1.3fr_1.3fr_0.6fr_auto] md:items-end">
@@ -292,7 +284,18 @@ export default function FindLeads() {
       </Card>
 
       {error && (
-        <div className="mt-4 rounded-2xl border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+        <div className="mt-4 flex animate-fade-in flex-col gap-3 rounded-2xl border border-danger/30 bg-danger/5 px-4 py-4 sm:flex-row sm:items-center">
+          <AlertTriangle className="size-5 shrink-0 text-danger" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-fg">A busca não conseguiu buscar dados reais agora</p>
+            <p className="mt-0.5 text-xs break-words text-muted">
+              Nenhum resultado foi inventado. Detalhe técnico: {error}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" loading={loading} icon={<RotateCcw className="size-3.5" />} onClick={() => void buscar(niche, city)}>
+            Tentar de novo
+          </Button>
+        </div>
       )}
 
       <Card className="mt-4 overflow-hidden">
@@ -327,9 +330,7 @@ export default function FindLeads() {
                 <span className="text-muted">
                   de {response.results.length} resultados · {response.query.niche} em {response.query.city} · {response.query.radiusKm} km
                 </span>
-                {response.mode === 'demo' ? (
-                  <DemoBadge label="Demo mode" />
-                ) : response.source === 'google' ? (
+                {response.source === 'google' ? (
                   <Badge tone="outline">Google Places · ao vivo</Badge>
                 ) : (
                   <Badge tone="outline">OpenStreetMap · grátis</Badge>

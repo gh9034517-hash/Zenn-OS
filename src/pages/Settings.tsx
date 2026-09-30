@@ -199,7 +199,7 @@ function GoogleKeyCard() {
           </a>
         </div>
         <p className="text-xs text-faint">
-          Dica de segurança: restrinja a chave por referenciador HTTP e habilite apenas a “Places API (New)”. A cobrança é da sua conta Google.
+          Segurança: em “Restrições de API” permita só a “Places API (New)”. Não use restrição por site (referenciador HTTP) — a chave roda no servidor e seria recusada. Para nunca pagar, limite a cota diária no Google Cloud.
         </p>
       </CardBody>
     </Card>

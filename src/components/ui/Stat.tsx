@@ -22,25 +22,16 @@ export function Stat({
   /** Quando informado, o cartão vira um atalho para essa rota. */
   to?: string
 }) {
-  // Um cartão com destino é um link de verdade: abre em nova aba com
-  // ctrl/cmd-clique e é anunciado corretamente por leitores de tela.
-  const Wrapper = to ? Link : 'div'
-  const wrapperProps = to
-    ? ({ to, 'aria-label': `${label} — abrir` } as const)
-    : ({} as Record<string, never>)
+  const classes = cn(
+    'panel panel-hover group animate-slide-up overflow-hidden p-4 sm:p-5',
+    emphasis && 'bg-gradient-to-br from-[#1a1a1e] to-surface',
+    to &&
+      'block cursor-pointer transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 active:scale-[0.99]',
+    className,
+  )
 
-  return (
-    <Wrapper
-      {...wrapperProps}
-      style={style}
-      className={cn(
-        'panel panel-hover group animate-slide-up overflow-hidden p-4 sm:p-5',
-        emphasis && 'bg-gradient-to-br from-[#1a1a1e] to-surface',
-        to &&
-          'block cursor-pointer transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 active:scale-[0.99]',
-        className,
-      )}
-    >
+  const body = (
+    <>
       <div className="flex items-center justify-between gap-2">
         <p className="eyebrow truncate !tracking-[0.14em]" title={label}>{label}</p>
         {icon && (
@@ -53,6 +44,18 @@ export function Stat({
         {value}
       </p>
       {hint && <div className="mt-1.5 truncate text-xs text-muted">{hint}</div>}
-    </Wrapper>
+    </>
+  )
+
+  // Um cartão com destino é um link de verdade: abre em nova aba com
+  // ctrl/cmd-clique e é anunciado corretamente por leitores de tela.
+  return to ? (
+    <Link to={to} aria-label={`${label} — abrir`} style={style} className={classes}>
+      {body}
+    </Link>
+  ) : (
+    <div style={style} className={classes}>
+      {body}
+    </div>
   )
 }
