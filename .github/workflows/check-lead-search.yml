@@ -44,5 +44,12 @@ jobs:
               | grep -iE '^(HTTP|access-control-allow-origin)' || echo "(sem resposta)"
           done
 
+      - name: OpenStreetMap de dentro de um Chrome real (origem do site)
+        continue-on-error: true
+        run: |
+          npm i --no-save --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+          node scripts/check-browser-osm.mjs
+
       - name: Busca real com o código do app
         run: npx --yes tsx scripts/check-lead-search.mts
