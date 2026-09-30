@@ -1,17 +1,10 @@
 import { Bookmark, BookmarkCheck, Eye, MessageCircle, Phone, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { LeadStatusBadge } from '@/components/leads/LeadBadges'
-import { categoriaEmPortugues } from '@/services/outreach'
+import { categoriaLabel } from '@/services/outreach'
 import { hasNoWebsite } from '@/services/googlePlaces'
 import type { Lead, PlaceResult } from '@/types'
 import { cn } from '@/utils/cn'
-
-/** Categoria legível: "hairdresser" -> "Salão"; desconhecida fica como veio. */
-export function categoriaLabel(category: string): string {
-  const pt = categoriaEmPortugues(category)
-  const label = pt ?? category
-  return label ? label.charAt(0).toUpperCase() + label.slice(1) : ''
-}
 
 function Monogram({ name }: { name: string }) {
   const initials = name

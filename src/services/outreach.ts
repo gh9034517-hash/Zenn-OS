@@ -87,6 +87,12 @@ export function categoriaEmPortugues(category?: string | null): string | null {
   return null
 }
 
+/** Categoria legível com inicial maiúscula: "hairdresser" -> "Salão". */
+export function categoriaLabel(category: string): string {
+  const label = categoriaEmPortugues(category) ?? category
+  return label ? label.charAt(0).toUpperCase() + label.slice(1) : ''
+}
+
 export const temSite = (website?: string | null) => !!website && !!website.trim()
 
 export interface Template {

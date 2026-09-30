@@ -3,6 +3,7 @@
 // e recarrega o snapshot — dashboard, CRM e financeiro ficam sempre
 // consistentes.
 
+import { categoriaLabel } from '@/services/outreach'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import * as db from '@/services/database'
 import type {
@@ -170,7 +171,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (existing) return existing
       const lead = await db.createLead({
         name: place.name,
-        category: place.category,
+        // O mapa entrega categorias cruas ('barber'); o CRM guarda em português.
+        category: categoriaLabel(place.category),
         address: place.address,
         city: place.city,
         phone: place.phone,
@@ -190,7 +192,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
       await logActivity({
         type: 'lead_created',
-        message: `Lead ${lead.name} salvo via ${place.source === 'demo' ? 'busca DEMO' : 'Google Places'}`,
+        message: `Lead ${lead.name} salvo via ${place.source === 'google_places' ? 'Google Maps' : 'OpenStreetMap'}`,
         entityType: 'lead',
         entityId: lead.id,
       })

@@ -154,11 +154,13 @@ function GoogleKeyCard() {
       />
       <CardBody className="space-y-4">
         <p className="text-sm text-muted">
-          A busca de leads já funciona <span className="text-fg">de graça</span>, com dados reais do
-          <span className="text-fg"> OpenStreetMap</span> — não precisa de chave nem cartão. O Google é um
-          <span className="text-fg"> upgrade opcional</span> que adiciona nota e número de avaliações (exige conta de
-          faturamento no Google Cloud). Se colar a chave aqui, ela fica no seu Supabase e é usada por uma função no
-          servidor — <span className="text-fg">nunca fica exposta no navegador</span>.
+          A busca de leads já funciona <span className="text-fg">de graça</span>, com empresas reais do
+          <span className="text-fg"> OpenStreetMap</span> — sem chave nem cartão. A limitação é o telefone: no mapa
+          gratuito, <span className="text-fg">cerca de 1 em cada 3 empresas</span> tem número cadastrado (as demais
+          têm o atalho "ver no Google"). O Google Maps traz o <span className="text-fg">telefone oficial de quase
+          todas</span>, além de nota e avaliações. Tem cota gratuita mensal, mas exige cartão no Google Cloud. A chave
+          fica no seu Supabase e é usada por uma função no servidor —{' '}
+          <span className="text-fg">nunca fica exposta no navegador</span>.
         </p>
         {!integrations.supabase && (
           <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
