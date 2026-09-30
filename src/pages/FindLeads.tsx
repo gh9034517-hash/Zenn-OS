@@ -1,13 +1,13 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { Bookmark, BookmarkCheck, Download, Eye, Loader2, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle, SlidersHorizontal, RotateCcw } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Download, Eye, MapPin, MessageCircle, Radar, Search, UserPlus, Tag, Ruler, AlertTriangle, RotateCcw } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
-import { FormField, Input, Select, Toggle } from '@/components/ui/Field'
+import { FormField, Input } from '@/components/ui/Field'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { LeadDrawer } from '@/components/leads/LeadDrawer'
+import { ResultCard, ResultsSkeleton, categoriaLabel } from '@/components/leads/ResultCard'
 import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBadges'
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
@@ -75,9 +75,6 @@ export default function FindLeads() {
   const [onlyNoSite, setOnlyNoSite] = useState(true)
   const [withPhone, setWithPhone] = useState(false)
   const [minRating, setMinRating] = useState('0')
-  const [minReviews, setMinReviews] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
-  const extraFiltersCount = (withPhone ? 1 : 0) + (Number(minRating) > 0 ? 1 : 0) + (Number(minReviews) > 0 ? 1 : 0)
   const [preview, setPreview] = useState<PlaceResult | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [savingAll, setSavingAll] = useState(false)
@@ -124,17 +121,18 @@ export default function FindLeads() {
   const filtered = useMemo(() => {
     if (!response) return []
     const rating = Number(minRating) || 0
-    const reviews = Number(minReviews) || 0
     return response.results.filter(
       (r) =>
         (!onlyNoSite || hasNoWebsite(r.website)) &&
         (!withPhone || !!r.phone) &&
-        (r.rating ?? 0) >= rating &&
-        r.reviewsCount >= reviews,
+        (r.rating ?? 0) >= rating,
     )
-  }, [response, onlyNoSite, withPhone, minRating, minReviews])
+  }, [response, onlyNoSite, withPhone, minRating])
 
   const noSiteCount = response?.results.filter((r) => hasNoWebsite(r.website)).length ?? 0
+  const phoneCount = response?.results.filter((r) => !!r.phone).length ?? 0
+  // O OpenStreetMap não tem nota nem avaliações: colunas vazias só poluem.
+  const hasRatings = response?.source === 'google'
 
   // Salvar em lote: o fluxo antigo obrigava a salvar um por um.
   const naoSalvos = useMemo(() => filtered.filter((r) => !findLeadByPlace(r.placeId)), [filtered, findLeadByPlace])
@@ -239,48 +237,6 @@ export default function FindLeads() {
           ))}
         </div>
 
-        {/* O filtro "sem site" é o coração da prospecção, então fica sempre à
-            vista. Os demais são refinamento e ficam recolhidos, para a tela
-            não competir com os resultados — principalmente no celular. */}
-        <div className="mt-4 border-t border-line pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Toggle
-              checked={onlyNoSite}
-              onChange={setOnlyNoSite}
-              label="Somente sem site"
-              description={response ? `${noSiteCount} de ${response.results.length}` : 'as melhores oportunidades'}
-            />
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              icon={<SlidersHorizontal className="size-3.5" />}
-              onClick={() => setShowFilters((v) => !v)}
-            >
-              {showFilters ? 'Menos filtros' : 'Mais filtros'}
-              {!showFilters && extraFiltersCount > 0 && (
-                <span className="ml-1.5 rounded-full bg-white px-1.5 font-mono text-[10px] text-black">{extraFiltersCount}</span>
-              )}
-            </Button>
-          </div>
-
-          {showFilters && (
-            <div className="mt-3 grid animate-fade-in gap-2 sm:grid-cols-2 xl:grid-cols-3">
-              <Toggle checked={withPhone} onChange={setWithPhone} label="Com telefone" description="Descarta sem número" />
-              <FormField label="Nota mínima">
-                <Select value={minRating} onChange={(e) => setMinRating(e.target.value)}>
-                  <option value="0">Qualquer nota</option>
-                  <option value="3.5">3,5 ou mais</option>
-                  <option value="4">4,0 ou mais</option>
-                  <option value="4.5">4,5 ou mais</option>
-                </Select>
-              </FormField>
-              <FormField label="Mínimo de avaliações">
-                <Input type="number" min={0} value={minReviews} onChange={(e) => setMinReviews(e.target.value)} placeholder="0" />
-              </FormField>
-            </div>
-          )}
-        </div>
       </Card>
 
       {error && (
@@ -298,12 +254,11 @@ export default function FindLeads() {
         </div>
       )}
 
+      {/* Com erro e sem resultado anterior, o painel de erro já diz tudo. */}
+      {(loading || response || !error) && (
       <Card className="mt-4 overflow-hidden">
         {loading ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-24 text-muted">
-            <Loader2 className="size-6 animate-spin" />
-            <p className="eyebrow">Buscando {niche} em {city}</p>
-          </div>
+          <ResultsSkeleton label={`Buscando ${niche.toLowerCase()} em ${city}…`} />
         ) : !response ? (
           <EmptyState
             title="Pronto para prospectar"
@@ -324,99 +279,79 @@ export default function FindLeads() {
           />
         ) : (
           <>
-            <div className="flex flex-col gap-3 border-b border-line px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="font-mono text-fg">{filtered.length}</span>
-                <span className="text-muted">
-                  de {response.results.length} resultados · {response.query.niche} em {response.query.city} · {response.query.radiusKm} km
-                </span>
-                {response.source === 'google' ? (
-                  <Badge tone="outline">Google Places · ao vivo</Badge>
-                ) : (
-                  <Badge tone="outline">OpenStreetMap · grátis</Badge>
-                )}
-                <span className="text-xs text-faint">{formatRelative(response.fetchedAt)}</span>
+            <div className="space-y-3 border-b border-line px-4 py-4 sm:px-5">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-fg">
+                    <span className="font-mono text-lg">{response.results.length}</span>{' '}
+                    <span className="text-muted">{response.query.niche.toLowerCase()} em</span>{' '}
+                    {response.resolvedCity || response.query.city}
+                  </p>
+                  <p className="mt-0.5 text-xs text-faint">
+                    {response.source === 'google' ? 'Google Maps' : 'OpenStreetMap'} · raio de {response.query.radiusKm} km ·{' '}
+                    {formatRelative(response.fetchedAt)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={savingAll}
+                    icon={<Bookmark className="size-3.5" />}
+                    onClick={salvarTodos}
+                    disabled={!naoSalvos.length}
+                    title={naoSalvos.length ? `Salvar ${naoSalvos.length} leads no CRM` : 'Todos já estão salvos'}
+                  >
+                    Salvar {naoSalvos.length ? `${naoSalvos.length} ` : ''}no CRM
+                  </Button>
+                  <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportFiltered} disabled={!filtered.length} aria-label="Exportar CSV">
+                    <span className="hidden sm:inline">CSV</span>
+                  </Button>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  loading={savingAll}
-                  icon={<Bookmark className="size-3.5" />}
-                  onClick={salvarTodos}
-                  disabled={!naoSalvos.length}
-                  title={naoSalvos.length ? `Salvar ${naoSalvos.length} leads no CRM` : 'Todos já estão salvos'}
-                >
-                  Salvar {naoSalvos.length ? `${naoSalvos.length} ` : ''}no CRM
-                </Button>
-                <Button variant="outline" size="sm" icon={<Download className="size-3.5" />} onClick={exportFiltered} disabled={!filtered.length}>
-                  <span className="hidden sm:inline">Exportar </span>CSV
-                </Button>
+
+              {/* Filtros como pílulas: um toque liga/desliga, com a contagem à vista. */}
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5">
+                <button type="button" className={cn('chip', onlyNoSite && 'chip-on')} onClick={() => setOnlyNoSite((v) => !v)} aria-pressed={onlyNoSite}>
+                  Sem site <span className="font-mono opacity-70">{noSiteCount}</span>
+                </button>
+                <button type="button" className={cn('chip', withPhone && 'chip-on')} onClick={() => setWithPhone((v) => !v)} aria-pressed={withPhone}>
+                  Com telefone <span className="font-mono opacity-70">{phoneCount}</span>
+                </button>
+                {response.source === 'google' && (
+                  <button type="button" className={cn('chip', Number(minRating) > 0 && 'chip-on')} onClick={() => setMinRating((v) => (Number(v) > 0 ? '0' : '4'))} aria-pressed={Number(minRating) > 0}>
+                    Nota 4+
+                  </button>
+                )}
               </div>
             </div>
 
             {filtered.length === 0 ? (
-              <EmptyState mascot={false} title="Nenhum resultado com esses filtros" description="Afrouxe a nota mínima ou o mínimo de avaliações." />
+              <EmptyState mascot={false} title="Nenhum resultado com esses filtros" description="Desligue um dos filtros acima, aumente o raio ou tente um nicho vizinho." />
             ) : (
               <>
               {/* Celular: cartões. A tabela precisa de 980px e virava rolagem
                   lateral, escondendo justamente os botões de ação. */}
               <ul className="divide-y divide-line lg:hidden">
-                {filtered.map((r, i) => {
-                  const saved = findLeadByPlace(r.placeId)
-                  const busy = busyId === r.placeId
-                  const semSite = hasNoWebsite(r.website)
-                  return (
-                    <li
-                      key={r.placeId}
-                      className={cn('animate-fade-in px-4 py-4', semSite && 'bg-white/[0.015]')}
-                      style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <button onClick={() => setPreview(r)} className="min-w-0 flex-1 text-left">
-                          <p className="truncate font-medium text-fg">{r.name}</p>
-                          <p className="truncate text-xs text-muted">
-                            {r.category}
-                            {r.address ? ` · ${r.address}` : ''}
-                          </p>
-                        </button>
-                        <WebsiteBadge website={r.website} />
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-                        <Rating value={r.rating} />
-                        {r.reviewsCount > 0 && <span className="font-mono">{formatNumber(r.reviewsCount)} aval.</span>}
-                        {r.phone ? <span className="font-mono text-fg-soft">{r.phone}</span> : <span className="text-faint">sem telefone</span>}
-                        {saved ? <LeadStatusBadge status={saved.status} /> : null}
-                      </div>
-
-                      <div className="mt-3 grid grid-cols-3 gap-2">
-                        <Button size="sm" variant="primary" icon={<MessageCircle className="size-3.5" />} onClick={() => workflow.contact(r)}>
-                          Contatar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={saved ? 'ghost' : 'secondary'}
-                          loading={busy}
-                          icon={saved ? <BookmarkCheck className="size-3.5" /> : <Bookmark className="size-3.5" />}
-                          onClick={() => run(r.placeId, () => workflow.save(r))}
-                        >
-                          {saved ? 'Salvo' : 'Salvar'}
-                        </Button>
-                        <Button size="sm" variant="outline" icon={<Eye className="size-3.5" />} onClick={() => setPreview(r)}>
-                          Ver
-                        </Button>
-                      </div>
-                    </li>
-                  )
-                })}
+                {filtered.map((r, i) => (
+                  <ResultCard
+                    key={r.placeId}
+                    r={r}
+                    saved={findLeadByPlace(r.placeId)}
+                    busy={busyId === r.placeId}
+                    delay={Math.min(i, 12) * 25}
+                    onContact={() => workflow.contact(r)}
+                    onSave={() => run(r.placeId, () => workflow.save(r))}
+                    onPreview={() => setPreview(r)}
+                  />
+                ))}
               </ul>
 
               <div className="hidden overflow-x-auto lg:block">
                 <table className="w-full min-w-[980px] text-sm">
                   <thead>
                     <tr className="border-b border-line text-left">
-                      {['Empresa', 'Categoria', 'Local', 'Nota', 'Avaliações', 'Telefone', 'Website', 'Status', 'Ações'].map((h) => (
+                      {['Empresa', 'Categoria', 'Local', ...(hasRatings ? ['Nota', 'Avaliações'] : []), 'Telefone', 'Website', 'Status', 'Ações'].map((h) => (
                         <th key={h} className={cn('eyebrow px-4 py-3 font-normal', h === 'Ações' && 'text-right')}>
                           {h}
                         </th>
@@ -434,14 +369,22 @@ export default function FindLeads() {
                               {r.name}
                             </button>
                           </td>
-                          <td className="px-4 py-3 text-muted">{r.category}</td>
+                          <td className="px-4 py-3 text-muted">{categoriaLabel(r.category)}</td>
                           <td className="max-w-[220px] px-4 py-3">
                             <p className="truncate text-fg-soft" title={r.address}>{r.address}</p>
                             <p className="text-xs text-faint">{r.city}</p>
                           </td>
-                          <td className="px-4 py-3"><Rating value={r.rating} /></td>
-                          <td className="px-4 py-3 font-mono text-xs text-muted">{formatNumber(r.reviewsCount)}</td>
-                          <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{r.phone ?? <span className="text-faint">—</span>}</td>
+                          {hasRatings && <td className="px-4 py-3"><Rating value={r.rating} /></td>}
+                          {hasRatings && <td className="px-4 py-3 font-mono text-xs text-muted">{formatNumber(r.reviewsCount)}</td>}
+                          <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
+                            {r.phone ? (
+                              <a href={`tel:${r.phone.replace(/[^\d+]/g, '')}`} className="text-fg hover:underline">{r.phone}</a>
+                            ) : r.googleMapsUrl ? (
+                              <a href={r.googleMapsUrl} target="_blank" rel="noreferrer" className="font-sans text-faint hover:text-fg hover:underline">ver no Google ↗</a>
+                            ) : (
+                              <span className="text-faint">—</span>
+                            )}
+                          </td>
                           <td className="px-4 py-3"><WebsiteBadge website={r.website} /></td>
                           <td className="px-4 py-3">{saved ? <LeadStatusBadge status={saved.status} /> : <span className="text-xs whitespace-nowrap text-faint">Não salvo</span>}</td>
                           <td className="px-4 py-3">
@@ -478,6 +421,7 @@ export default function FindLeads() {
           </>
         )}
       </Card>
+      )}
 
       <p className="mt-3 text-xs text-faint">{leads.length} leads salvos no CRM.</p>
 

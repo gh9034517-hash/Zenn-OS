@@ -159,7 +159,9 @@ async function geocodePhoton(city: string, signal?: AbortSignal): Promise<GeoPoi
   if (!f?.geometry?.coordinates) return null
   const [lon, lat] = f.geometry.coordinates
   const p = f.properties ?? {}
-  return { lat, lon, label: [p.name, p.state].filter(Boolean).join(' · ') }
+  // "São Paulo · São Paulo" é redundante: só mostra o estado quando difere.
+  const label = p.state && p.state !== p.name ? `${p.name} · ${p.state}` : p.name
+  return { lat, lon, label: label || city }
 }
 
 async function geocodeNominatim(city: string, signal?: AbortSignal): Promise<GeoPoint | null> {
@@ -209,26 +211,49 @@ export const OVERPASS_ENDPOINTS = [
 
 /** Espera entre disparos: o próximo servidor entra se o anterior demorar. */
 const STAGGER_MS = 6000
-/** Tempo máximo por servidor. */
+/** Tempo máximo por tentativa. */
 const PER_ENDPOINT_MS = 30000
+/** HTTP 429 = "espere um pouco": a vaga no servidor libera em segundos. */
+const RETRY_429_MS = 7000
+
+class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+  }
+}
 
 /**
  * Consulta vários servidores Overpass com disparo escalonado e fica com a
  * primeira resposta válida. Um servidor que falha libera o próximo na hora;
- * um que só está lento ganha concorrência depois de STAGGER_MS.
+ * um que só está lento ganha concorrência depois de STAGGER_MS. Um 429
+ * ("muitas requisições") não é falha definitiva: o mesmo servidor é tentado
+ * de novo uma vez, depois de RETRY_429_MS.
  */
 export function overpass(query: string, signal?: AbortSignal): Promise<{ elements: OsmEl[]; endpoint: string }> {
   return new Promise((resolve, reject) => {
+    const queue = [...OVERPASS_ENDPOINTS]
+    const retried = new Set<string>()
     const ctrls: AbortController[] = []
+    const timers: Array<ReturnType<typeof setTimeout>> = []
     const errors: string[] = []
-    let launched = 0
-    let finished = 0
+    let inflight = 0
+    let pendingRetries = 0
     let settled = false
-    let timer: ReturnType<typeof setTimeout> | null = null
+    let stagger: ReturnType<typeof setTimeout> | null = null
 
     const cleanup = () => {
-      if (timer) clearTimeout(timer)
+      if (stagger) clearTimeout(stagger)
+      timers.forEach(clearTimeout)
       ctrls.forEach((c) => c.abort())
+    }
+    const fail = () => {
+      if (settled || inflight > 0 || pendingRetries > 0 || queue.length > 0) return
+      settled = true
+      cleanup()
+      reject(new Error(errors.join(' · ') || 'Nenhum servidor de mapas respondeu'))
     }
     signal?.addEventListener('abort', () => {
       if (settled) return
@@ -238,21 +263,19 @@ export function overpass(query: string, signal?: AbortSignal): Promise<{ element
     })
 
     const launchNext = () => {
-      if (settled || launched >= OVERPASS_ENDPOINTS.length) return
-      const ep = OVERPASS_ENDPOINTS[launched++]
+      if (settled) return
+      const ep = queue.shift()
+      if (!ep) return fail()
       const host = new URL(ep).host
       const ctrl = new AbortController()
       ctrls.push(ctrl)
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(launchNext, STAGGER_MS)
+      inflight++
+      if (stagger) clearTimeout(stagger)
+      stagger = setTimeout(launchNext, STAGGER_MS)
 
-      fetchT(
-        ep,
-        { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal },
-        PER_ENDPOINT_MS,
-      )
+      fetchT(ep, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal }, PER_ENDPOINT_MS)
         .then(async (res) => {
-          if (!res.ok) throw new Error(`${host}: HTTP ${res.status}`)
+          if (!res.ok) throw new HttpError(`${host}: HTTP ${res.status}`, res.status)
           const json = (await res.json()) as { elements?: OsmEl[]; remark?: string }
           // O Overpass pode responder 200 com erro de execução no "remark".
           if (json.remark && /error|timed out/i.test(json.remark)) throw new Error(`${host}: ${json.remark.slice(0, 80)}`)
@@ -263,22 +286,68 @@ export function overpass(query: string, signal?: AbortSignal): Promise<{ element
           resolve({ elements: json.elements, endpoint: host })
         })
         .catch((e: unknown) => {
+          inflight--
           if (settled) return
-          const name = e instanceof Error ? e.name : ''
-          errors.push(name === 'AbortError' ? `${host}: sem resposta` : e instanceof Error ? e.message : String(e))
-          finished++
-          if (finished >= OVERPASS_ENDPOINTS.length) {
-            settled = true
-            cleanup()
-            reject(new Error(errors.join(' · ')))
+          if (e instanceof HttpError && e.status === 429 && !retried.has(ep)) {
+            retried.add(ep)
+            pendingRetries++
+            timers.push(
+              setTimeout(() => {
+                pendingRetries--
+                queue.unshift(ep)
+                launchNext()
+              }, RETRY_429_MS),
+            )
           } else {
-            launchNext() // falhou: não espera o escalonamento
+            const name = e instanceof Error ? e.name : ''
+            errors.push(name === 'AbortError' ? `${host}: sem resposta` : e instanceof Error ? e.message : String(e))
           }
+          if (queue.length) launchNext() // falhou: não espera o escalonamento
+          else fail()
         })
     }
 
     launchNext()
   })
+}
+
+// ---------- Memória de buscas ----------
+// Repetir uma busca recente não gasta requisição: menos chance de 429 e
+// resposta instantânea. Guarda poucas buscas para não lotar o armazenamento.
+const CACHE_PREFIX = 'zenn-os:osm-cache:v1:'
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000
+const CACHE_MAX = 8
+
+function cacheKey(niche: string, city: string, km: number) {
+  return `${CACHE_PREFIX}${norm(niche)}|${norm(city)}|${km}`
+}
+
+function readCache(key: string): OsmSearchResult | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const { at, data } = JSON.parse(raw) as { at: number; data: OsmSearchResult }
+    return Date.now() - at < CACHE_TTL_MS ? data : null
+  } catch {
+    return null
+  }
+}
+
+function writeCache(key: string, data: OsmSearchResult) {
+  try {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX) && k !== key)
+    // Remove as mais antigas quando passa do limite.
+    if (keys.length >= CACHE_MAX) {
+      keys
+        .map((k) => ({ k, at: (JSON.parse(localStorage.getItem(k) || '{}') as { at?: number }).at ?? 0 }))
+        .sort((a, b) => a.at - b.at)
+        .slice(0, keys.length - CACHE_MAX + 1)
+        .forEach(({ k }) => localStorage.removeItem(k))
+    }
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }))
+  } catch {
+    /* sem armazenamento: segue sem memória */
+  }
 }
 
 function osmAddress(t: Record<string, string>, fallbackCity: string) {
@@ -293,11 +362,17 @@ export interface OsmSearchResult {
   resolvedCity: string
   /** Servidor Overpass que respondeu. */
   endpoint: string
+  /** Veio da memória local (busca repetida nas últimas horas). */
+  cached?: boolean
 }
 
 /** Busca empresas reais no OpenStreetMap. Lança erro claro se não conseguir. */
 export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal): Promise<OsmSearchResult> {
   const { niche, city } = params
+  const key = cacheKey(niche, city, Math.min(Math.max(params.radiusKm || 10, 1), 30))
+  const cached = readCache(key)
+  if (cached) return { ...cached, cached: true }
+
   const center = await geocodeCity(city, signal)
   if (!center) throw new Error(`Não encontramos a cidade "${city}" no mapa. Confira a grafia (ex.: "São Paulo", "Campinas").`)
 
@@ -359,9 +434,12 @@ export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal
   }
 
   results.sort((a, b) => b._score - a._score || a.name.localeCompare(b.name, 'pt-BR'))
-  return {
+  const out: OsmSearchResult = {
     results: results.slice(0, 150).map(({ _score: _, ...r }) => r),
     resolvedCity: center.label || city,
     endpoint,
   }
+  // Só guarda busca que trouxe algo: uma resposta vazia pode ter sido azar.
+  if (out.results.length) writeCache(key, out)
+  return out
 }
