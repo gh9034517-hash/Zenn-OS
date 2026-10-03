@@ -667,7 +667,10 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
     onProgress?.({ found: remembered.results.length, target, city: '', done: cities.length, total: cities.length, partial: remembered.results })
     return remembered
   }
-  const quota = Math.max(5, Math.ceil(target / Math.min(cities.length, region === 'BR' ? 8 : 4)))
+  // Cota por cidade: espalha os leads sem exigir consultas demais. No teste
+  // real, cada cidade levou de 1s a 27s conforme a carga do servidor
+  // gratuito, então menos cidades = resultado bem mais rápido.
+  const quota = Math.max(5, Math.ceil(target / Math.min(cities.length, region === 'BR' ? 5 : 3)))
   const started = Date.now()
 
   const picked: PlaceResult[] = []
