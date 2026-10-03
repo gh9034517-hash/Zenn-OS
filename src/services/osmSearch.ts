@@ -565,8 +565,19 @@ export interface RegionSearchOptions {
   target: number
   requirePhone: boolean
   requireNoSite: boolean
-  onProgress?: (p: { found: number; target: number; city: string; done: number; total: number }) => void
+  /** Chamado a cada cidade, já com os leads encontrados até agora. */
+  onProgress?: (p: RegionProgress) => void
   signal?: AbortSignal
+}
+
+export interface RegionProgress {
+  found: number
+  target: number
+  city: string
+  done: number
+  total: number
+  /** Leads encontrados até agora — a tela mostra enquanto a busca segue. */
+  partial: PlaceResult[]
 }
 
 export interface RegionSearchResult {
@@ -577,6 +588,8 @@ export interface RegionSearchResult {
   failed: string[]
   /** Percorreu todas as cidades sem atingir a meta. */
   exhausted: boolean
+  /** O usuário parou a busca e ficou com o que já tinha vindo. */
+  stopped?: boolean
 }
 
 /** Tempo máximo de uma busca por região antes de entregar o que achou. */
@@ -634,7 +647,7 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
   const memKey = regionCacheKey(opts)
   const remembered = readRegionCache(memKey)
   if (remembered) {
-    onProgress?.({ found: remembered.results.length, target, city: '', done: cities.length, total: cities.length })
+    onProgress?.({ found: remembered.results.length, target, city: '', done: cities.length, total: cities.length, partial: remembered.results })
     return remembered
   }
   const quota = Math.max(5, Math.ceil(target / Math.min(cities.length, region === 'BR' ? 8 : 4)))
@@ -644,11 +657,14 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
   const reserve: PlaceResult[] = []
   const seen = new Set<string>()
   const contributing: string[] = []
-  const failed: string[] = []
+  const failedCities: Array<{ city: string; uf: string }> = []
   let failsInARow = 0
 
   const matches = (r: PlaceResult) => (!requirePhone || !!r.phone) && (!requireNoSite || !r.website)
   const labelOf = (c: { city: string; uf: string }) => `${c.city} - ${c.uf}`
+  const aborted = () => !!signal?.aborted
+  const report = (city: string, done: number) =>
+    onProgress?.({ found: picked.length, target, city, done, total: cities.length, partial: picked.slice() })
 
   // O telefone é filtrado aqui, e não no servidor: o filtro por etiqueta de
   // telefone não usa índice no Overpass e estourava o tempo em cidade grande
@@ -659,55 +675,77 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
     return (await searchArea(center, 10, niche, labelOf(c), signal)).results
   }
 
-  for (let i = 0; i < cities.length && picked.length < target; i += REGION_CONCURRENCY) {
-    if (signal?.aborted) throw new DOMException('Busca cancelada', 'AbortError')
-    if (Date.now() - started > REGION_BUDGET_MS) break
-    const batch = cities.slice(i, i + REGION_CONCURRENCY)
-    onProgress?.({ found: picked.length, target, city: batch.map(labelOf).join(' e '), done: i, total: cities.length })
+  const absorb = (label: string, list: PlaceResult[]) => {
+    let taken = 0
+    for (const r of list) {
+      if (seen.has(r.placeId) || !matches(r)) continue
+      seen.add(r.placeId)
+      if (taken < quota && picked.length < target) {
+        picked.push(r)
+        taken++
+      } else {
+        reserve.push(r)
+      }
+    }
+    if (taken) contributing.push(label)
+  }
 
-    // Duas cidades por vez: o Overpass atende duas consultas simultâneas por
-    // pessoa, então isso corta o tempo pela metade sem esbarrar no limite.
+  // 1ª passada: duas cidades por vez (o Overpass atende duas consultas
+  // simultâneas por pessoa), na ordem que espalha os leads pelo país.
+  for (let i = 0; i < cities.length && picked.length < target; i += REGION_CONCURRENCY) {
+    if (aborted() || Date.now() - started > REGION_BUDGET_MS) break
+    const batch = cities.slice(i, i + REGION_CONCURRENCY)
+    report(batch.map(labelOf).join(' e '), i)
+
     const settled = await Promise.allSettled(batch.map(fetchCity))
-    if (signal?.aborted) throw new DOMException('Busca cancelada', 'AbortError')
+    if (aborted()) break
 
     settled.forEach((res, k) => {
-      const label = labelOf(batch[k])
       if (res.status === 'rejected') {
-        failed.push(label)
+        failedCities.push(batch[k])
         failsInARow++
-        return
+      } else {
+        failsInARow = 0
+        absorb(labelOf(batch[k]), res.value)
       }
-      failsInARow = 0
-      let taken = 0
-      for (const r of res.value) {
-        if (seen.has(r.placeId) || !matches(r)) continue
-        seen.add(r.placeId)
-        if (taken < quota && picked.length < target) {
-          picked.push(r)
-          taken++
-        } else {
-          reserve.push(r)
-        }
-      }
-      if (taken) contributing.push(label)
     })
 
     // Várias cidades seguidas falhando sem nenhum lead = servidores fora do ar.
     if (failsInARow >= 4 && picked.length === 0) {
-      throw new Error('Os servidores de mapa não estão respondendo agora. Tente de novo em alguns minutos.')
+      throw new Error('Os servidores de mapa estão sobrecarregados agora. Tente de novo em alguns minutos.')
     }
+    report('', Math.min(i + REGION_CONCURRENCY, cities.length))
     if (picked.length < target && i + REGION_CONCURRENCY < cities.length) await new Promise((r) => setTimeout(r, 400))
   }
 
+  // 2ª chance para as cidades que falharam: o servidor público oscila e,
+  // minutos depois, costuma responder. Uma por vez, para não pesar.
+  for (const c of [...failedCities]) {
+    if (picked.length >= target || aborted() || Date.now() - started > REGION_BUDGET_MS) break
+    report(`${labelOf(c)} (nova tentativa)`, cities.length)
+    try {
+      absorb(labelOf(c), await fetchCity(c))
+      failedCities.splice(failedCities.indexOf(c), 1)
+    } catch {
+      if (aborted()) break
+    }
+  }
+
+  // Parou antes de achar qualquer coisa: é cancelamento de verdade.
+  if (aborted() && picked.length === 0) throw new DOMException('Busca cancelada', 'AbortError')
+  const failed = failedCities.map(labelOf)
+
   // Completa a meta com o que sobrou das cidades já consultadas.
-  for (const r of reserve) {
+  for (const r of aborted() ? [] : reserve) {
     if (picked.length >= target) break
     picked.push(r)
   }
 
-  onProgress?.({ found: picked.length, target, city: '', done: cities.length, total: cities.length })
-  const out: RegionSearchResult = { results: picked, cities: contributing, failed, exhausted: picked.length < target }
-  // Só lembra buscas completas: uma parcial (com falhas) merece nova tentativa.
-  if (picked.length && !failed.length) writeRegionCache(memKey, out)
+  // Parou no meio: entrega o que já veio, sem completar com sobras.
+  const stopped = aborted()
+  report('', cities.length)
+  const out: RegionSearchResult = { results: picked, cities: contributing, failed, exhausted: !stopped && picked.length < target, stopped }
+  // Só lembra buscas completas: parcial (parada ou com falhas) merece nova tentativa.
+  if (picked.length && !failed.length && !stopped) writeRegionCache(memKey, out)
   return out
 }

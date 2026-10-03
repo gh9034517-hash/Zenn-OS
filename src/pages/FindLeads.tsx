@@ -13,7 +13,7 @@ import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBa
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
 import { searchPlaces, hasNoWebsite, type PlacesSearchResponse } from '@/services/googlePlaces'
-import { searchRegionOSM, nomeDaRegiao, naRegiao, UFS, type Region } from '@/services/osmSearch'
+import { searchRegionOSM, nomeDaRegiao, naRegiao, UFS, type Region, type RegionProgress } from '@/services/osmSearch'
 import type { PlaceResult } from '@/types'
 import { exportCsv } from '@/utils/csv'
 import { formatNumber, formatRelative } from '@/utils/format'
@@ -99,7 +99,7 @@ export default function FindLeads() {
   const [response, setResponse] = useState<PlacesSearchResponse | null>(last)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [progress, setProgress] = useState<{ found: number; target: number; city: string; done: number; total: number } | null>(null)
+  const [progress, setProgress] = useState<RegionProgress | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
   // Ligados por padrão: a ferramenta existe para achar quem NÃO tem site e
@@ -147,6 +147,7 @@ export default function FindLeads() {
           onProgress: setProgress,
         })
         const avisos: string[] = []
+        if (r.stopped) avisos.push(`Busca interrompida com ${r.results.length} de ${target} leads.`)
         if (r.exhausted) {
           avisos.push(`Achamos ${r.results.length} de ${target} nas maiores cidades de ${nomeDaRegiao(where as Region)}. Para mais, desligue um filtro ou escolha outra região.`)
         }
@@ -421,11 +422,29 @@ export default function FindLeads() {
                   />
                 </div>
               </div>
-              <Button size="sm" variant="ghost" icon={<X className="size-3.5" />} onClick={cancelar}>
-                Cancelar
+              <Button size="sm" variant={progress?.partial.length ? 'secondary' : 'ghost'} icon={<X className="size-3.5" />} onClick={cancelar}>
+                {progress?.partial.length ? 'Parar e usar estes' : 'Cancelar'}
               </Button>
             </div>
-            <ResultsSkeleton label="" />
+            {progress?.partial.length ? (
+              // Os leads aparecem enquanto a busca segue: dá para começar a
+              // chamar os primeiros sem esperar as outras cidades.
+              <ul className="divide-y divide-line">
+                {progress.partial.map((r) => (
+                  <ResultCard
+                    key={r.placeId}
+                    r={r}
+                    saved={findLeadByPlace(r.placeId)}
+                    busy={busyId === r.placeId}
+                    onContact={() => workflow.contact(r)}
+                    onSave={() => run(r.placeId, () => workflow.save(r))}
+                    onPreview={() => setPreview(r)}
+                  />
+                ))}
+              </ul>
+            ) : (
+              <ResultsSkeleton label="" />
+            )}
           </div>
         ) : !response ? (
           <EmptyState
