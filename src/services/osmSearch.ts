@@ -366,20 +366,17 @@ export interface OsmSearchResult {
   cached?: boolean
 }
 
-// Etiquetas onde o telefone pode estar, para filtrar já no servidor.
-const PHONE_FILTER = '[~"^(phone|contact:phone|mobile|contact:mobile|phone:mobile|contact:whatsapp|whatsapp)$"~"."]'
-
 /**
  * Busca empresas do nicho numa área quadrada ao redor de um ponto.
- * requirePhone filtra no próprio servidor: a resposta vem menor e só com
- * quem tem telefone cadastrado.
+ * Sem filtro de telefone no servidor de propósito: o filtro por etiqueta não
+ * usa índice no Overpass e estoura o tempo em cidade grande. Quem chama
+ * filtra o telefone na resposta.
  */
 async function searchArea(
   center: GeoPoint,
   km: number,
   niche: string,
   cityLabel: string,
-  opts: { requirePhone?: boolean },
   signal?: AbortSignal,
 ): Promise<{ results: PlaceResult[]; endpoint: string }> {
   const dLat = km / 111
@@ -388,10 +385,9 @@ async function searchArea(
 
   const plan = osmPlan(niche)
   const kw = (plan.keywords[0] || norm(niche)).replace(/["\\]/g, '')
-  const phone = opts.requirePhone ? PHONE_FILTER : ''
   const clauses = plan.selectors.length
-    ? plan.selectors.map((s) => `nwr${s}["name"]${phone}${bbox};`)
-    : [`nwr["name"~"${kw}",i]${phone}${bbox};`]
+    ? plan.selectors.map((s) => `nwr${s}["name"]${bbox};`)
+    : [`nwr["name"~"${kw}",i]${bbox};`]
   const query = `[out:json][timeout:25];(${clauses.join('')});out center tags 500;`
 
   const { elements, endpoint } = await overpass(query, signal)
@@ -454,7 +450,7 @@ export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal
   const center = await geocodeCity(city, signal)
   if (!center) throw new Error(`Não encontramos a cidade "${city}" no mapa. Confira a grafia (ex.: "São Paulo", "Campinas").`)
 
-  const { results, endpoint } = await searchArea(center, km, niche, city, {}, signal)
+  const { results, endpoint } = await searchArea(center, km, niche, city, signal)
   const out: OsmSearchResult = { results: results.slice(0, 150), resolvedCity: center.label || city, endpoint }
   // Só guarda busca que trouxe algo: uma resposta vazia pode ter sido azar.
   if (out.results.length) writeCache(key, out)
@@ -529,6 +525,19 @@ export function nomeDaRegiao(region: Region): string {
   return region === 'BR' ? 'Brasil todo' : UFS[region] ?? region
 }
 
+// Preposição de cada estado: "na Bahia", "no Ceará", "em São Paulo".
+const ARTIGO: Record<string, 'no' | 'na' | 'em'> = {
+  AC: 'no', AL: 'em', AP: 'no', AM: 'no', BA: 'na', CE: 'no', DF: 'no', ES: 'no', GO: 'em',
+  MA: 'no', MT: 'em', MS: 'em', MG: 'em', PA: 'no', PB: 'na', PR: 'no', PE: 'em', PI: 'no',
+  RJ: 'no', RN: 'no', RS: 'no', RO: 'em', RR: 'em', SC: 'em', SP: 'em', SE: 'em', TO: 'no',
+}
+
+/** "no Brasil", "na Bahia", "em Minas Gerais". */
+export function naRegiao(region: Region): string {
+  if (region === 'BR') return 'no Brasil'
+  return `${ARTIGO[region] ?? 'em'} ${UFS[region] ?? region}`
+}
+
 // Coordenadas de cidade não mudam: guarda para sempre e poupa requisições.
 const GEO_PREFIX = 'zenn-os:geo:v1:'
 async function geocodeCached(query: string, signal?: AbortSignal): Promise<GeoPoint | null> {
@@ -572,6 +581,8 @@ export interface RegionSearchResult {
 
 /** Tempo máximo de uma busca por região antes de entregar o que achou. */
 const REGION_BUDGET_MS = 3 * 60 * 1000
+/** Cidades consultadas ao mesmo tempo. */
+const REGION_CONCURRENCY = 2
 
 // A busca de região é guardada inteira (uma entrada), não cidade a cidade:
 // o "Brasil todo" passa de 40 cidades e estouraria o limite da memória.
@@ -634,28 +645,41 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
   const seen = new Set<string>()
   const contributing: string[] = []
   const failed: string[] = []
-  let errorsInARow = 0
+  let failsInARow = 0
 
   const matches = (r: PlaceResult) => (!requirePhone || !!r.phone) && (!requireNoSite || !r.website)
+  const labelOf = (c: { city: string; uf: string }) => `${c.city} - ${c.uf}`
 
-  for (let i = 0; i < cities.length && picked.length < target; i++) {
+  // O telefone é filtrado aqui, e não no servidor: o filtro por etiqueta de
+  // telefone não usa índice no Overpass e estourava o tempo em cidade grande
+  // (no teste real, São Paulo, BH, Fortaleza e Curitiba falharam com ele).
+  const fetchCity = async (c: { city: string; uf: string }) => {
+    const center = await geocodeCached(`${c.city}, ${UFS[c.uf]}`, signal)
+    if (!center) throw new Error('cidade não localizada')
+    return (await searchArea(center, 10, niche, labelOf(c), signal)).results
+  }
+
+  for (let i = 0; i < cities.length && picked.length < target; i += REGION_CONCURRENCY) {
     if (signal?.aborted) throw new DOMException('Busca cancelada', 'AbortError')
     if (Date.now() - started > REGION_BUDGET_MS) break
-    const { city, uf } = cities[i]
-    const label = `${city} - ${uf}`
-    onProgress?.({ found: picked.length, target, city: label, done: i, total: cities.length })
+    const batch = cities.slice(i, i + REGION_CONCURRENCY)
+    onProgress?.({ found: picked.length, target, city: batch.map(labelOf).join(' e '), done: i, total: cities.length })
 
-    try {
-      const center = await geocodeCached(`${city}, ${UFS[uf]}`, signal)
-      if (!center) {
+    // Duas cidades por vez: o Overpass atende duas consultas simultâneas por
+    // pessoa, então isso corta o tempo pela metade sem esbarrar no limite.
+    const settled = await Promise.allSettled(batch.map(fetchCity))
+    if (signal?.aborted) throw new DOMException('Busca cancelada', 'AbortError')
+
+    settled.forEach((res, k) => {
+      const label = labelOf(batch[k])
+      if (res.status === 'rejected') {
         failed.push(label)
-        continue
+        failsInARow++
+        return
       }
-      const list = (await searchArea(center, 10, niche, label, { requirePhone }, signal)).results
-      errorsInARow = 0
-
+      failsInARow = 0
       let taken = 0
-      for (const r of list) {
+      for (const r of res.value) {
         if (seen.has(r.placeId) || !matches(r)) continue
         seen.add(r.placeId)
         if (taken < quota && picked.length < target) {
@@ -666,16 +690,13 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
         }
       }
       if (taken) contributing.push(label)
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e
-      failed.push(label)
-      // Vários erros seguidos = servidores fora do ar: não adianta insistir.
-      if (++errorsInARow >= 3 && picked.length === 0) {
-        throw new Error(`Os servidores de mapa não estão respondendo agora (${e instanceof Error ? e.message : String(e)}).`)
-      }
+    })
+
+    // Várias cidades seguidas falhando sem nenhum lead = servidores fora do ar.
+    if (failsInARow >= 4 && picked.length === 0) {
+      throw new Error('Os servidores de mapa não estão respondendo agora. Tente de novo em alguns minutos.')
     }
-    // Educação com o servidor público entre uma cidade e outra.
-    if (picked.length < target && i < cities.length - 1) await new Promise((r) => setTimeout(r, 800))
+    if (picked.length < target && i + REGION_CONCURRENCY < cities.length) await new Promise((r) => setTimeout(r, 400))
   }
 
   // Completa a meta com o que sobrou das cidades já consultadas.

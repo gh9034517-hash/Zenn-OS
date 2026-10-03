@@ -13,7 +13,7 @@ import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBa
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
 import { searchPlaces, hasNoWebsite, type PlacesSearchResponse } from '@/services/googlePlaces'
-import { searchRegionOSM, nomeDaRegiao, UFS, type Region } from '@/services/osmSearch'
+import { searchRegionOSM, nomeDaRegiao, naRegiao, UFS, type Region } from '@/services/osmSearch'
 import type { PlaceResult } from '@/types'
 import { exportCsv } from '@/utils/csv'
 import { formatNumber, formatRelative } from '@/utils/format'
@@ -112,7 +112,7 @@ export default function FindLeads() {
   const [savingAll, setSavingAll] = useState(false)
 
   const isCity = where === 'CITY'
-  const whereLabel = isCity ? city.trim() || 'cidade' : nomeDaRegiao(where as Region)
+  const ondeTexto = isCity ? `em ${city.trim() || 'cidade'}` : naRegiao(where as Region)
 
   const buscar = async (nichoBusca: string) => {
     const nicho = nichoBusca.trim()
@@ -157,7 +157,7 @@ export default function FindLeads() {
           results: r.results,
           query: { niche: nicho, city: nomeDaRegiao(where as Region), radiusKm: 10 },
           fetchedAt: new Date().toISOString(),
-          resolvedCity: nomeDaRegiao(where as Region),
+          resolvedCity: naRegiao(where as Region),
           scope: 'region',
           target,
           cities: r.cities,
@@ -286,7 +286,7 @@ export default function FindLeads() {
       <PageHeader
         eyebrow="Prospecção"
         title="Encontrar leads"
-        description="Busque empresas por nicho e cidade. Quem não tem site aparece destacado — são as melhores oportunidades."
+        description="Escolha o nicho, onde e quantos leads. Quem não tem site e tem telefone vem primeiro — são as melhores oportunidades."
       />
 
       <Card className="p-4 sm:p-5">
@@ -371,7 +371,7 @@ export default function FindLeads() {
           </div>
 
           <Button type="submit" variant="primary" size="lg" loading={loading} icon={isCity ? <Search className="size-4" /> : <Globe2 className="size-4" />} className="w-full sm:w-auto">
-            Buscar {target} leads {isCity ? (city.trim() ? `em ${city.trim()}` : '') : where === 'BR' ? 'no Brasil' : `em ${UFS[where] ?? where}`}
+            Buscar {target} leads {isCity && !city.trim() ? '' : ondeTexto}
           </Button>
         </form>
       </Card>
@@ -405,7 +405,7 @@ export default function FindLeads() {
                       Buscando em <span className="font-medium">{progress.city}</span>
                     </>
                   ) : (
-                    <>Buscando {niche.toLowerCase()} em {whereLabel}…</>
+                    <>Buscando {niche.toLowerCase()} {ondeTexto}…</>
                   )}
                 </p>
                 {progress && (
@@ -430,18 +430,10 @@ export default function FindLeads() {
         ) : !response ? (
           <EmptyState
             title="Pronto para prospectar"
-            description="Informe um nicho e uma cidade. Ex.: Pizzarias · Campinas · 10 km."
+            description="Toque num nicho acima — a busca já começa no Brasil todo. Ou escolha um estado e a quantidade."
             action={
-              <Button
-                variant="outline"
-                icon={<Radar className="size-4" />}
-                onClick={() => {
-                  setNiche('Pizzarias')
-                  setCity('Campinas')
-                  setRadius('10')
-                }}
-              >
-                Usar exemplo
+              <Button variant="outline" icon={<Radar className="size-4" />} onClick={() => usarNicho('Barbearias')}>
+                Buscar barbearias
               </Button>
             }
           />
@@ -452,7 +444,9 @@ export default function FindLeads() {
                 <div className="min-w-0">
                   <p className="text-sm text-fg">
                     <span className="font-mono text-lg">{filtered.length}</span>{' '}
-                    <span className="text-muted">{response.query.niche.toLowerCase()} em</span>{' '}
+                    <span className="text-muted">
+                      {response.query.niche.toLowerCase()} {response.scope === 'region' ? '' : 'em'}
+                    </span>{' '}
                     {response.resolvedCity || response.query.city}
                   </p>
                   <p className="mt-0.5 text-xs text-faint">
