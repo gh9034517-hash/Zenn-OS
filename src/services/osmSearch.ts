@@ -213,8 +213,9 @@ export const OVERPASS_ENDPOINTS = [
 const STAGGER_MS = 6000
 /** Tempo máximo por tentativa. */
 const PER_ENDPOINT_MS = 30000
-/** HTTP 429 = "espere um pouco": a vaga no servidor libera em segundos. */
-const RETRY_429_MS = 7000
+/** 429 / 502 / 503 / 504 = "espere um pouco": costuma liberar em segundos. */
+const RETRY_BUSY_MS = 7000
+const BUSY_STATUS = new Set([429, 502, 503, 504])
 
 class HttpError extends Error {
   constructor(
@@ -229,10 +230,15 @@ class HttpError extends Error {
  * Consulta vários servidores Overpass com disparo escalonado e fica com a
  * primeira resposta válida. Um servidor que falha libera o próximo na hora;
  * um que só está lento ganha concorrência depois de STAGGER_MS. Um 429
- * ("muitas requisições") não é falha definitiva: o mesmo servidor é tentado
- * de novo uma vez, depois de RETRY_429_MS.
+ * ("muitas requisições") ou 5xx não é falha definitiva: o mesmo servidor é
+ * tentado de novo uma vez, depois de RETRY_BUSY_MS.
  */
-export function overpass(query: string, signal?: AbortSignal): Promise<{ elements: OsmEl[]; endpoint: string }> {
+export function overpass(
+  query: string,
+  signal?: AbortSignal,
+  opts: { perEndpointMs?: number } = {},
+): Promise<{ elements: OsmEl[]; endpoint: string }> {
+  const perEndpointMs = opts.perEndpointMs ?? PER_ENDPOINT_MS
   return new Promise((resolve, reject) => {
     const queue = [...OVERPASS_ENDPOINTS]
     const retried = new Set<string>()
@@ -273,7 +279,7 @@ export function overpass(query: string, signal?: AbortSignal): Promise<{ element
       if (stagger) clearTimeout(stagger)
       stagger = setTimeout(launchNext, STAGGER_MS)
 
-      fetchT(ep, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal }, PER_ENDPOINT_MS)
+      fetchT(ep, { method: 'POST', body: new URLSearchParams({ data: query }), signal: ctrl.signal }, perEndpointMs)
         .then(async (res) => {
           if (!res.ok) throw new HttpError(`${host}: HTTP ${res.status}`, res.status)
           const json = (await res.json()) as { elements?: OsmEl[]; remark?: string }
@@ -288,7 +294,10 @@ export function overpass(query: string, signal?: AbortSignal): Promise<{ element
         .catch((e: unknown) => {
           inflight--
           if (settled) return
-          if (e instanceof HttpError && e.status === 429 && !retried.has(ep)) {
+          // Servidor ocupado (429/5xx): tenta o mesmo de novo uma vez, em vez
+          // de só esperar os reservas, que costumam estar mudos quando o
+          // principal está sobrecarregado.
+          if (e instanceof HttpError && BUSY_STATUS.has(e.status) && !retried.has(ep)) {
             retried.add(ep)
             pendingRetries++
             timers.push(
@@ -296,7 +305,7 @@ export function overpass(query: string, signal?: AbortSignal): Promise<{ element
                 pendingRetries--
                 queue.unshift(ep)
                 launchNext()
-              }, RETRY_429_MS),
+              }, RETRY_BUSY_MS),
             )
           } else {
             const name = e instanceof Error ? e.name : ''
@@ -378,6 +387,7 @@ async function searchArea(
   niche: string,
   cityLabel: string,
   signal?: AbortSignal,
+  perEndpointMs?: number,
 ): Promise<{ results: PlaceResult[]; endpoint: string }> {
   const dLat = km / 111
   const dLon = km / (111 * Math.max(Math.cos((center.lat * Math.PI) / 180), 0.2))
@@ -390,7 +400,7 @@ async function searchArea(
     : [`nwr["name"~"${kw}",i]${bbox};`]
   const query = `[out:json][timeout:25];(${clauses.join('')});out center tags 500;`
 
-  const { elements, endpoint } = await overpass(query, signal)
+  const { elements, endpoint } = await overpass(query, signal, { perEndpointMs })
 
   const kws = plan.keywords.map(norm)
   const prefer = (plan.prefer ?? []).map(norm)
@@ -594,8 +604,15 @@ export interface RegionSearchResult {
 
 /** Tempo máximo de uma busca por região antes de entregar o que achou. */
 const REGION_BUDGET_MS = 3 * 60 * 1000
-/** Cidades consultadas ao mesmo tempo. */
-const REGION_CONCURRENCY = 2
+/**
+ * Cidades consultadas ao mesmo tempo. Uma: em teste real, consultas
+ * seguidas em ritmo alto fazem o servidor público responder 504 por minutos.
+ */
+const REGION_CONCURRENCY = 1
+/** Raio por cidade na busca por região: o centro já tem leads de sobra. */
+const REGION_RADIUS_KM = 6
+/** Na região, falha rápido e deixa a cidade para a 2ª chance. */
+const REGION_ENDPOINT_MS = 15000
 
 // A busca de região é guardada inteira (uma entrada), não cidade a cidade:
 // o "Brasil todo" passa de 40 cidades e estouraria o limite da memória.
@@ -672,7 +689,7 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
   const fetchCity = async (c: { city: string; uf: string }) => {
     const center = await geocodeCached(`${c.city}, ${UFS[c.uf]}`, signal)
     if (!center) throw new Error('cidade não localizada')
-    return (await searchArea(center, 10, niche, labelOf(c), signal)).results
+    return (await searchArea(center, REGION_RADIUS_KM, niche, labelOf(c), signal, REGION_ENDPOINT_MS)).results
   }
 
   const absorb = (label: string, list: PlaceResult[]) => {
@@ -690,8 +707,7 @@ export async function searchRegionOSM(opts: RegionSearchOptions): Promise<Region
     if (taken) contributing.push(label)
   }
 
-  // 1ª passada: duas cidades por vez (o Overpass atende duas consultas
-  // simultâneas por pessoa), na ordem que espalha os leads pelo país.
+  // 1ª passada, na ordem que espalha os leads pelo país.
   for (let i = 0; i < cities.length && picked.length < target; i += REGION_CONCURRENCY) {
     if (aborted() || Date.now() - started > REGION_BUDGET_MS) break
     const batch = cities.slice(i, i + REGION_CONCURRENCY)
