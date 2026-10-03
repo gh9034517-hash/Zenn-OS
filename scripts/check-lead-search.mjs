@@ -97,6 +97,50 @@ for (const [niche, city] of cases) {
   await new Promise((res) => setTimeout(res, 3000))
 }
 
+// 3) Busca por região, sem digitar cidade: meta de quantidade.
+const regionCases = [
+  ['Barbearias', 'BR', 50],
+  ['Academias', 'MG', 25],
+]
+console.log('\n== Busca por região (Brasil todo / estado), só com telefone e sem site')
+for (const [niche, region, target] of regionCases) {
+  const r = await page.evaluate(
+    async ([niche, region, target]) => {
+      const t0 = performance.now()
+      try {
+        const res = await window.OSM.searchRegionOSM({ niche, region, target, requirePhone: true, requireNoSite: true })
+        return {
+          ok: true,
+          secs: ((performance.now() - t0) / 1000).toFixed(1),
+          total: res.results.length,
+          allPhone: res.results.every((x) => !!x.phone),
+          allNoSite: res.results.every((x) => !x.website),
+          unique: new Set(res.results.map((x) => x.placeId)).size === res.results.length,
+          cities: res.cities,
+          failed: res.failed,
+          sample: res.results.slice(0, 4).map((x) => `${x.name} — ${x.phone} — ${x.city}`),
+        }
+      } catch (e) {
+        return { ok: false, error: String(e && e.message ? e.message : e), secs: ((performance.now() - t0) / 1000).toFixed(1) }
+      }
+    },
+    [niche, region, target],
+  )
+  const label = `${niche} / ${region} / meta ${target}`.padEnd(34)
+  const good = r.ok && r.total === target && r.allPhone && r.allNoSite && r.unique && (region !== 'BR' || r.cities.length >= 3)
+  if (!good) failures++
+  if (!r.ok) {
+    console.log(`FAIL ${label} ${r.error} (${r.secs}s)`)
+  } else {
+    console.log(
+      `${good ? 'OK  ' : 'FAIL'} ${label} ${r.total} leads · ${r.cities.length} cidades · tel: ${r.allPhone} · sem site: ${r.allNoSite} · únicos: ${r.unique} · ${r.secs}s${r.failed.length ? ` · falharam: ${r.failed.join(', ')}` : ''}`,
+    )
+    console.log(`       cidades: ${r.cities.join(', ')}`)
+    for (const s of r.sample) console.log(`       ${s}`)
+  }
+  await new Promise((res) => setTimeout(res, 3000))
+}
+
 await browser.close()
 console.log(`\n${failures ? `❌ ${failures} falha(s)` : '✅ tudo certo'}`)
 process.exit(failures ? 1 : 0)

@@ -38,6 +38,12 @@ export interface PlacesSearchResponse {
   resolvedCity?: string
   /** Aviso quando uma fonte falhou e outra real assumiu. */
   notice?: string
+  /** 'city' = uma cidade digitada; 'region' = Brasil todo ou um estado. */
+  scope?: 'city' | 'region'
+  /** Quantos leads o usuário pediu. */
+  target?: number
+  /** Na busca por região: cidades que contribuíram. */
+  cities?: string[]
 }
 
 export const isGooglePlacesConfigured = () => integrations.googlePlaces

@@ -40,7 +40,8 @@ export function ResultCard({
   delay?: number
 }) {
   const semSite = hasNoWebsite(r.website)
-  const local = [categoriaLabel(r.category), r.address || r.city].filter(Boolean).join(' · ')
+  // Cidade sempre visível: na busca por Brasil/estado os leads vêm de várias.
+  const local = [categoriaLabel(r.category), r.city, r.address].filter(Boolean).join(' · ')
   const telHref = r.phone ? `tel:${r.phone.replace(/[^\d+]/g, '')}` : null
 
   return (
@@ -114,7 +115,7 @@ export function ResultCard({
 export function ResultsSkeleton({ label }: { label: string }) {
   return (
     <div aria-busy="true" aria-label={label}>
-      <p className="eyebrow px-4 pt-4 sm:px-5">{label}</p>
+      {label && <p className="eyebrow px-4 pt-4 sm:px-5">{label}</p>}
       <ul className="divide-y divide-line">
         {Array.from({ length: 5 }, (_, i) => (
           <li key={i} className="px-4 py-4 sm:px-5" style={{ opacity: 1 - i * 0.15 }}>

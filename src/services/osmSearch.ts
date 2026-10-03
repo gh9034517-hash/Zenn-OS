@@ -358,7 +358,7 @@ function osmAddress(t: Record<string, string>, fallbackCity: string) {
 
 export interface OsmSearchResult {
   results: PlaceResult[]
-  /** Cidade que o mapa entendeu (ex.: "São Paulo · São Paulo"). */
+  /** Cidade que o mapa entendeu (ex.: "Campinas · São Paulo"). */
   resolvedCity: string
   /** Servidor Overpass que respondeu. */
   endpoint: string
@@ -366,26 +366,32 @@ export interface OsmSearchResult {
   cached?: boolean
 }
 
-/** Busca empresas reais no OpenStreetMap. Lança erro claro se não conseguir. */
-export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal): Promise<OsmSearchResult> {
-  const { niche, city } = params
-  const key = cacheKey(niche, city, Math.min(Math.max(params.radiusKm || 10, 1), 30))
-  const cached = readCache(key)
-  if (cached) return { ...cached, cached: true }
+// Etiquetas onde o telefone pode estar, para filtrar já no servidor.
+const PHONE_FILTER = '[~"^(phone|contact:phone|mobile|contact:mobile|phone:mobile|contact:whatsapp|whatsapp)$"~"."]'
 
-  const center = await geocodeCity(city, signal)
-  if (!center) throw new Error(`Não encontramos a cidade "${city}" no mapa. Confira a grafia (ex.: "São Paulo", "Campinas").`)
-
-  const km = Math.min(Math.max(params.radiusKm || 10, 1), 30)
+/**
+ * Busca empresas do nicho numa área quadrada ao redor de um ponto.
+ * requirePhone filtra no próprio servidor: a resposta vem menor e só com
+ * quem tem telefone cadastrado.
+ */
+async function searchArea(
+  center: GeoPoint,
+  km: number,
+  niche: string,
+  cityLabel: string,
+  opts: { requirePhone?: boolean },
+  signal?: AbortSignal,
+): Promise<{ results: PlaceResult[]; endpoint: string }> {
   const dLat = km / 111
   const dLon = km / (111 * Math.max(Math.cos((center.lat * Math.PI) / 180), 0.2))
   const bbox = `(${(center.lat - dLat).toFixed(5)},${(center.lon - dLon).toFixed(5)},${(center.lat + dLat).toFixed(5)},${(center.lon + dLon).toFixed(5)})`
 
   const plan = osmPlan(niche)
   const kw = (plan.keywords[0] || norm(niche)).replace(/["\\]/g, '')
+  const phone = opts.requirePhone ? PHONE_FILTER : ''
   const clauses = plan.selectors.length
-    ? plan.selectors.map((s) => `nwr${s}["name"]${bbox};`)
-    : [`nwr["name"~"${kw}",i]${bbox};`]
+    ? plan.selectors.map((s) => `nwr${s}["name"]${phone}${bbox};`)
+    : [`nwr["name"~"${kw}",i]${phone}${bbox};`]
   const query = `[out:json][timeout:25];(${clauses.join('')});out center tags 500;`
 
   const { elements, endpoint } = await overpass(query, signal)
@@ -401,12 +407,12 @@ export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal
     const hay = norm(`${t.name} ${t.cuisine ?? ''}`)
     if (kws.length && !kws.some((k) => hay.includes(k))) continue
     // Mesmo nome no mesmo endereço = mesmo negócio mapeado duas vezes.
-    const addr = osmAddress(t, city)
-    const key = `${norm(t.name)}|${norm(addr.address)}`
-    if (seen.has(key)) continue
-    seen.add(key)
+    const addr = osmAddress(t, cityLabel)
+    const dedupe = `${norm(t.name)}|${norm(addr.address)}`
+    if (seen.has(dedupe)) continue
+    seen.add(dedupe)
 
-    const phone = pickPhone(t)
+    const tel = pickPhone(t)
     const website = pickWebsite(t)
     const preferred = prefer.length && prefer.some((k) => hay.includes(k)) ? 1 : 0
 
@@ -416,7 +422,7 @@ export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal
       category: t.cuisine || t.shop || t.amenity || t.office || t.leisure || t.tourism || t.healthcare || niche,
       address: addr.address,
       city: addr.city,
-      phone,
+      phone: tel,
       rating: null,
       reviewsCount: 0,
       website,
@@ -429,17 +435,258 @@ export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal
       instagram: pickInstagram(t),
       source: 'osm',
       // Com telefone e sem site primeiro: são os leads mais acionáveis.
-      _score: (phone ? 4 : 0) + (website ? 0 : 2) + preferred,
+      _score: (tel ? 4 : 0) + (website ? 0 : 2) + preferred,
     })
   }
 
   results.sort((a, b) => b._score - a._score || a.name.localeCompare(b.name, 'pt-BR'))
-  const out: OsmSearchResult = {
-    results: results.slice(0, 150).map(({ _score: _, ...r }) => r),
-    resolvedCity: center.label || city,
-    endpoint,
-  }
+  return { results: results.map(({ _score: _, ...r }) => r), endpoint }
+}
+
+/** Busca empresas reais numa cidade. Lança erro claro se não conseguir. */
+export async function searchPlacesOSM(params: SearchParams, signal?: AbortSignal): Promise<OsmSearchResult> {
+  const { niche, city } = params
+  const km = Math.min(Math.max(params.radiusKm || 10, 1), 30)
+  const key = cacheKey(niche, city, km)
+  const cached = readCache(key)
+  if (cached) return { ...cached, cached: true }
+
+  const center = await geocodeCity(city, signal)
+  if (!center) throw new Error(`Não encontramos a cidade "${city}" no mapa. Confira a grafia (ex.: "São Paulo", "Campinas").`)
+
+  const { results, endpoint } = await searchArea(center, km, niche, city, {}, signal)
+  const out: OsmSearchResult = { results: results.slice(0, 150), resolvedCity: center.label || city, endpoint }
   // Só guarda busca que trouxe algo: uma resposta vazia pode ter sido azar.
   if (out.results.length) writeCache(key, out)
+  return out
+}
+
+// ---------- Busca por região (Brasil todo / estado) ----------
+export const UFS: Record<string, string> = {
+  AC: 'Acre', AL: 'Alagoas', AP: 'Amapá', AM: 'Amazonas', BA: 'Bahia', CE: 'Ceará',
+  DF: 'Distrito Federal', ES: 'Espírito Santo', GO: 'Goiás', MA: 'Maranhão', MT: 'Mato Grosso',
+  MS: 'Mato Grosso do Sul', MG: 'Minas Gerais', PA: 'Pará', PB: 'Paraíba', PR: 'Paraná',
+  PE: 'Pernambuco', PI: 'Piauí', RJ: 'Rio de Janeiro', RN: 'Rio Grande do Norte',
+  RS: 'Rio Grande do Sul', RO: 'Rondônia', RR: 'Roraima', SC: 'Santa Catarina',
+  SP: 'São Paulo', SE: 'Sergipe', TO: 'Tocantins',
+}
+
+/** Maiores cidades de cada estado, em ordem de tamanho. */
+const CIDADES_POR_UF: Record<string, string[]> = {
+  AC: ['Rio Branco', 'Cruzeiro do Sul'],
+  AL: ['Maceió', 'Arapiraca'],
+  AP: ['Macapá', 'Santana'],
+  AM: ['Manaus', 'Parintins', 'Itacoatiara'],
+  BA: ['Salvador', 'Feira de Santana', 'Vitória da Conquista', 'Camaçari', 'Lauro de Freitas', 'Itabuna', 'Juazeiro', 'Ilhéus'],
+  CE: ['Fortaleza', 'Caucaia', 'Juazeiro do Norte', 'Maracanaú', 'Sobral', 'Crato'],
+  DF: ['Brasília', 'Taguatinga', 'Ceilândia'],
+  ES: ['Vitória', 'Vila Velha', 'Serra', 'Cariacica', 'Cachoeiro de Itapemirim', 'Linhares'],
+  GO: ['Goiânia', 'Aparecida de Goiânia', 'Anápolis', 'Rio Verde', 'Luziânia'],
+  MA: ['São Luís', 'Imperatriz', 'São José de Ribamar', 'Timon', 'Caxias'],
+  MT: ['Cuiabá', 'Várzea Grande', 'Rondonópolis', 'Sinop'],
+  MS: ['Campo Grande', 'Dourados', 'Três Lagoas', 'Corumbá'],
+  MG: ['Belo Horizonte', 'Uberlândia', 'Contagem', 'Juiz de Fora', 'Betim', 'Montes Claros', 'Uberaba', 'Governador Valadares', 'Ipatinga'],
+  PA: ['Belém', 'Ananindeua', 'Santarém', 'Marabá', 'Castanhal'],
+  PB: ['João Pessoa', 'Campina Grande', 'Santa Rita', 'Patos'],
+  PR: ['Curitiba', 'Londrina', 'Maringá', 'Ponta Grossa', 'Cascavel', 'São José dos Pinhais', 'Foz do Iguaçu'],
+  PE: ['Recife', 'Jaboatão dos Guararapes', 'Olinda', 'Caruaru', 'Petrolina', 'Paulista'],
+  PI: ['Teresina', 'Parnaíba', 'Picos'],
+  RJ: ['Rio de Janeiro', 'São Gonçalo', 'Duque de Caxias', 'Nova Iguaçu', 'Niterói', 'Campos dos Goytacazes', 'Petrópolis', 'Volta Redonda'],
+  RN: ['Natal', 'Mossoró', 'Parnamirim'],
+  RS: ['Porto Alegre', 'Caxias do Sul', 'Canoas', 'Pelotas', 'Santa Maria', 'Gravataí', 'Novo Hamburgo'],
+  RO: ['Porto Velho', 'Ji-Paraná', 'Ariquemes'],
+  RR: ['Boa Vista'],
+  SC: ['Florianópolis', 'Joinville', 'Blumenau', 'São José', 'Chapecó', 'Itajaí', 'Criciúma'],
+  SP: ['São Paulo', 'Campinas', 'Guarulhos', 'São Bernardo do Campo', 'Santo André', 'Osasco', 'São José dos Campos', 'Ribeirão Preto', 'Sorocaba', 'Santos', 'São José do Rio Preto', 'Jundiaí', 'Piracicaba', 'Bauru'],
+  SE: ['Aracaju', 'Nossa Senhora do Socorro', 'Lagarto'],
+  TO: ['Palmas', 'Araguaína', 'Gurupi'],
+}
+
+/**
+ * Ordem do "Brasil todo": alterna regiões para os leads virem espalhados
+ * pelo país, e não todos de São Paulo.
+ */
+const ORDEM_BRASIL: Array<[string, string]> = [
+  ['São Paulo', 'SP'], ['Rio de Janeiro', 'RJ'], ['Belo Horizonte', 'MG'], ['Salvador', 'BA'],
+  ['Brasília', 'DF'], ['Fortaleza', 'CE'], ['Curitiba', 'PR'], ['Recife', 'PE'], ['Porto Alegre', 'RS'],
+  ['Manaus', 'AM'], ['Goiânia', 'GO'], ['Belém', 'PA'], ['Campinas', 'SP'], ['Florianópolis', 'SC'],
+  ['Vitória', 'ES'], ['São Luís', 'MA'], ['Natal', 'RN'], ['João Pessoa', 'PB'], ['Maceió', 'AL'],
+  ['Teresina', 'PI'], ['Campo Grande', 'MS'], ['Cuiabá', 'MT'], ['Aracaju', 'SE'], ['Uberlândia', 'MG'],
+  ['Londrina', 'PR'], ['Joinville', 'SC'], ['Niterói', 'RJ'], ['Ribeirão Preto', 'SP'], ['Feira de Santana', 'BA'],
+  ['Juiz de Fora', 'MG'], ['Caxias do Sul', 'RS'], ['Porto Velho', 'RO'], ['Palmas', 'TO'], ['Macapá', 'AP'],
+  ['Boa Vista', 'RR'], ['Rio Branco', 'AC'], ['Santos', 'SP'], ['Maringá', 'PR'], ['Sorocaba', 'SP'],
+  ['Campina Grande', 'PB'], ['Caruaru', 'PE'], ['Vila Velha', 'ES'], ['Blumenau', 'SC'], ['Anápolis', 'GO'],
+]
+
+export type Region = 'BR' | keyof typeof UFS
+
+export function cidadesDaRegiao(region: Region): Array<{ city: string; uf: string }> {
+  if (region === 'BR') return ORDEM_BRASIL.map(([city, uf]) => ({ city, uf }))
+  return (CIDADES_POR_UF[region] ?? []).map((city) => ({ city, uf: region }))
+}
+
+export function nomeDaRegiao(region: Region): string {
+  return region === 'BR' ? 'Brasil todo' : UFS[region] ?? region
+}
+
+// Coordenadas de cidade não mudam: guarda para sempre e poupa requisições.
+const GEO_PREFIX = 'zenn-os:geo:v1:'
+async function geocodeCached(query: string, signal?: AbortSignal): Promise<GeoPoint | null> {
+  try {
+    const raw = localStorage.getItem(GEO_PREFIX + norm(query))
+    if (raw) return JSON.parse(raw) as GeoPoint
+  } catch {
+    /* sem armazenamento */
+  }
+  const p = await geocodeCity(query, signal)
+  if (p) {
+    try {
+      localStorage.setItem(GEO_PREFIX + norm(query), JSON.stringify(p))
+    } catch {
+      /* sem armazenamento */
+    }
+  }
+  return p
+}
+
+export interface RegionSearchOptions {
+  niche: string
+  region: Region
+  /** Quantos leads o usuário quer. */
+  target: number
+  requirePhone: boolean
+  requireNoSite: boolean
+  onProgress?: (p: { found: number; target: number; city: string; done: number; total: number }) => void
+  signal?: AbortSignal
+}
+
+export interface RegionSearchResult {
+  results: PlaceResult[]
+  /** Cidades que contribuíram com pelo menos um lead. */
+  cities: string[]
+  /** Cidades em que a busca falhou (servidor ocupado etc.). */
+  failed: string[]
+  /** Percorreu todas as cidades sem atingir a meta. */
+  exhausted: boolean
+}
+
+/** Tempo máximo de uma busca por região antes de entregar o que achou. */
+const REGION_BUDGET_MS = 3 * 60 * 1000
+
+// A busca de região é guardada inteira (uma entrada), não cidade a cidade:
+// o "Brasil todo" passa de 40 cidades e estouraria o limite da memória.
+const REGION_CACHE_PREFIX = 'zenn-os:region-cache:v1:'
+const REGION_CACHE_MAX = 5
+
+function regionCacheKey(o: RegionSearchOptions) {
+  return `${REGION_CACHE_PREFIX}${norm(o.niche)}|${o.region}|${o.target}|${o.requirePhone ? 1 : 0}${o.requireNoSite ? 1 : 0}`
+}
+
+function readRegionCache(key: string): RegionSearchResult | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    const { at, data } = JSON.parse(raw) as { at: number; data: RegionSearchResult }
+    return Date.now() - at < CACHE_TTL_MS ? data : null
+  } catch {
+    return null
+  }
+}
+
+function writeRegionCache(key: string, data: RegionSearchResult) {
+  try {
+    const keys = Object.keys(localStorage).filter((k) => k.startsWith(REGION_CACHE_PREFIX) && k !== key)
+    if (keys.length >= REGION_CACHE_MAX) {
+      keys
+        .map((k) => ({ k, at: (JSON.parse(localStorage.getItem(k) || '{}') as { at?: number }).at ?? 0 }))
+        .sort((x, y) => x.at - y.at)
+        .slice(0, keys.length - REGION_CACHE_MAX + 1)
+        .forEach(({ k }) => localStorage.removeItem(k))
+    }
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), data }))
+  } catch {
+    /* sem armazenamento: segue sem memória */
+  }
+}
+
+/**
+ * Busca no Brasil todo ou num estado sem o usuário digitar cidade: percorre
+ * as maiores cidades da região, uma por vez, até juntar a quantidade pedida.
+ *
+ * Cada cidade contribui com no máximo uma "cota", para os leads virem
+ * espalhados. Se as cidades acabarem antes da meta, completa com as sobras
+ * já baixadas — sem nenhuma requisição a mais.
+ */
+export async function searchRegionOSM(opts: RegionSearchOptions): Promise<RegionSearchResult> {
+  const { niche, region, target, requirePhone, requireNoSite, onProgress, signal } = opts
+  const cities = cidadesDaRegiao(region)
+  const memKey = regionCacheKey(opts)
+  const remembered = readRegionCache(memKey)
+  if (remembered) {
+    onProgress?.({ found: remembered.results.length, target, city: '', done: cities.length, total: cities.length })
+    return remembered
+  }
+  const quota = Math.max(5, Math.ceil(target / Math.min(cities.length, region === 'BR' ? 8 : 4)))
+  const started = Date.now()
+
+  const picked: PlaceResult[] = []
+  const reserve: PlaceResult[] = []
+  const seen = new Set<string>()
+  const contributing: string[] = []
+  const failed: string[] = []
+  let errorsInARow = 0
+
+  const matches = (r: PlaceResult) => (!requirePhone || !!r.phone) && (!requireNoSite || !r.website)
+
+  for (let i = 0; i < cities.length && picked.length < target; i++) {
+    if (signal?.aborted) throw new DOMException('Busca cancelada', 'AbortError')
+    if (Date.now() - started > REGION_BUDGET_MS) break
+    const { city, uf } = cities[i]
+    const label = `${city} - ${uf}`
+    onProgress?.({ found: picked.length, target, city: label, done: i, total: cities.length })
+
+    try {
+      const center = await geocodeCached(`${city}, ${UFS[uf]}`, signal)
+      if (!center) {
+        failed.push(label)
+        continue
+      }
+      const list = (await searchArea(center, 10, niche, label, { requirePhone }, signal)).results
+      errorsInARow = 0
+
+      let taken = 0
+      for (const r of list) {
+        if (seen.has(r.placeId) || !matches(r)) continue
+        seen.add(r.placeId)
+        if (taken < quota && picked.length < target) {
+          picked.push(r)
+          taken++
+        } else {
+          reserve.push(r)
+        }
+      }
+      if (taken) contributing.push(label)
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') throw e
+      failed.push(label)
+      // Vários erros seguidos = servidores fora do ar: não adianta insistir.
+      if (++errorsInARow >= 3 && picked.length === 0) {
+        throw new Error(`Os servidores de mapa não estão respondendo agora (${e instanceof Error ? e.message : String(e)}).`)
+      }
+    }
+    // Educação com o servidor público entre uma cidade e outra.
+    if (picked.length < target && i < cities.length - 1) await new Promise((r) => setTimeout(r, 800))
+  }
+
+  // Completa a meta com o que sobrou das cidades já consultadas.
+  for (const r of reserve) {
+    if (picked.length >= target) break
+    picked.push(r)
+  }
+
+  onProgress?.({ found: picked.length, target, city: '', done: cities.length, total: cities.length })
+  const out: RegionSearchResult = { results: picked, cities: contributing, failed, exhausted: picked.length < target }
+  // Só lembra buscas completas: uma parcial (com falhas) merece nova tentativa.
+  if (picked.length && !failed.length) writeRegionCache(memKey, out)
   return out
 }
