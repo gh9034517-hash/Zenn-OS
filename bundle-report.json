@@ -1,0 +1,452 @@
+{
+  "start": "https://webvee-leads-v2.vercel.app",
+  "files": [
+    {
+      "url": "/_next/static/immutable/chunks/3s_b_nmc1y5dx.css",
+      "status": 200,
+      "size": 127360
+    },
+    {
+      "url": "/_next/static/immutable/chunks/2c_2b2prcozy6.js",
+      "status": 200,
+      "size": 5359
+    },
+    {
+      "url": "/_next/static/immutable/chunks/0k46l0-jsw7tw.js",
+      "status": 200,
+      "size": 34043
+    },
+    {
+      "url": "/_next/static/immutable/chunks/34zud_-dgkbsw.js",
+      "status": 200,
+      "size": 230281
+    },
+    {
+      "url": "/_next/static/immutable/chunks/1k1f55tucyaav.js",
+      "status": 200,
+      "size": 162859
+    },
+    {
+      "url": "/_next/static/immutable/chunks/turbopack-1cvbnb3nlabgn.js",
+      "status": 200,
+      "size": 10030
+    },
+    {
+      "url": "/_next/static/immutable/chunks/3y3he90iil8lx.js",
+      "status": 200,
+      "size": 20841
+    },
+    {
+      "url": "/_next/static/immutable/chunks/1ckwo4ed1xb6q.js",
+      "status": 200,
+      "size": 20871
+    },
+    {
+      "url": "/_next/static/immutable/chunks/1dg8fe9cu7-pk.js",
+      "status": 200,
+      "size": 259165
+    },
+    {
+      "url": "/_next/static/immutable/chunks/3f2l6gfhm4bnb.js",
+      "status": 200,
+      "size": 141655
+    },
+    {
+      "url": "/_next/static/immutable/chunks/1phhf21isvxvl.js",
+      "status": 200,
+      "size": 21486
+    },
+    {
+      "url": "/_next/static/immutable/chunks/1rj252regybcc.js",
+      "status": 200,
+      "size": 20943
+    },
+    {
+      "url": "/_next/static/immutable/chunks/2fl-10sxxqne_.js",
+      "status": 200,
+      "size": 7820
+    }
+  ],
+  "routes": [
+    "/api/afiliados/clique",
+    "/api/broadcast",
+    "/criar-conta",
+    "/entrar",
+    "/iceberg",
+    "/recovery",
+    "/recuperar-senha",
+    "/vector"
+  ],
+  "apiRoutes": [
+    "/api/afiliados/clique",
+    "/api/broadcast"
+  ],
+  "urls": [
+    "http://localhost",
+    "http://n",
+    "http://www.w3.org/1998/Math/MathML",
+    "http://www.w3.org/1999/xlink",
+    "http://www.w3.org/2000/svg",
+    "http://www.w3.org/XML/1998/namespace",
+    "https://github.com/orgs/supabase/discussions/45715",
+    "https://github.com/supabase/supabase-js/blob/master/packages/core/auth-js/migrations/lockless-coordination.md",
+    "https://github.com/supabase/supabase-js/blob/master/packages/core/realtime-js/migrations/httpsend-server-version.md",
+    "https://nextjs.org/docs/app/api-reference/functions/use-search-params#updating-searchparams",
+    "https://nextjs.org/docs/messages/404-get-initial-props",
+    "https://nextjs.org/docs/messages/failed-to-find-server-action",
+    "https://nextjs.org/docs/messages/gssp-component-member",
+    "https://nextjs.org/docs/messages/gssp-export",
+    "https://nextjs.org/docs/messages/instant-link-prefetch-partial",
+    "https://nextjs.org/docs/messages/instant-unrendered-segment",
+    "https://nextjs.org/docs/messages/non-standard-node-env",
+    "https://nextjs.org/docs/messages/public-next-folder-conflict",
+    "https://nextjs.org/docs/messages/ssg-fallback-true-export",
+    "https://react.dev/errors/",
+    "https://supabase.com/dashboard/project/_/settings/api",
+    "https://supabase.com/docs/guides/auth/server-side",
+    "https://uyjielrjrsrenzuyrwmg.supabase.co",
+    "https://vercel.live/_next-live/feedback/feedback.js",
+    "https://webvee-leads-v2.vercel.app",
+    "https://webvee.invalid"
+  ],
+  "env": [
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "NEXT_PUBLIC_SUPABASE_URL"
+  ],
+  "probes": [
+    {
+      "path": "/admin",
+      "status": 307,
+      "location": "/entrar?destino=%2Fadmin"
+    },
+    {
+      "path": "/ajuda",
+      "status": 307,
+      "location": "/entrar?destino=%2Fajuda"
+    },
+    {
+      "path": "/analise",
+      "status": 307,
+      "location": "/entrar?destino=%2Fanalise"
+    },
+    {
+      "path": "/api-keys",
+      "status": 307,
+      "location": "/entrar?destino=%2Fapi-keys"
+    },
+    {
+      "path": "/app",
+      "status": 307,
+      "location": "/entrar?destino=%2Fapp"
+    },
+    {
+      "path": "/assinatura",
+      "status": 307,
+      "location": "/entrar?destino=%2Fassinatura"
+    },
+    {
+      "path": "/auditoria",
+      "status": 307,
+      "location": "/entrar?destino=%2Fauditoria"
+    },
+    {
+      "path": "/busca",
+      "status": 307,
+      "location": "/entrar?destino=%2Fbusca"
+    },
+    {
+      "path": "/buscar",
+      "status": 307,
+      "location": "/entrar?destino=%2Fbuscar"
+    },
+    {
+      "path": "/campanhas",
+      "status": 307,
+      "location": "/entrar?destino=%2Fcampanhas"
+    },
+    {
+      "path": "/chaves",
+      "status": 307,
+      "location": "/entrar?destino=%2Fchaves"
+    },
+    {
+      "path": "/cidades",
+      "status": 307,
+      "location": "/entrar?destino=%2Fcidades"
+    },
+    {
+      "path": "/config",
+      "status": 307,
+      "location": "/entrar?destino=%2Fconfig"
+    },
+    {
+      "path": "/configuracoes",
+      "status": 307,
+      "location": "/entrar?destino=%2Fconfiguracoes"
+    },
+    {
+      "path": "/conta",
+      "status": 307,
+      "location": "/entrar?destino=%2Fconta"
+    },
+    {
+      "path": "/creditos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fcreditos"
+    },
+    {
+      "path": "/criar-conta",
+      "status": 200,
+      "location": ""
+    },
+    {
+      "path": "/crm",
+      "status": 307,
+      "location": "/entrar?destino=%2Fcrm"
+    },
+    {
+      "path": "/dashboard",
+      "status": 307,
+      "location": "/entrar?destino=%2Fdashboard"
+    },
+    {
+      "path": "/disparos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fdisparos"
+    },
+    {
+      "path": "/entrar",
+      "status": 200,
+      "location": ""
+    },
+    {
+      "path": "/exportar",
+      "status": 307,
+      "location": "/entrar?destino=%2Fexportar"
+    },
+    {
+      "path": "/favoritos",
+      "status": 307,
+      "location": "/entrar?destino=%2Ffavoritos"
+    },
+    {
+      "path": "/funil",
+      "status": 307,
+      "location": "/entrar?destino=%2Ffunil"
+    },
+    {
+      "path": "/gerar-site",
+      "status": 307,
+      "location": "/entrar?destino=%2Fgerar-site"
+    },
+    {
+      "path": "/historico",
+      "status": 307,
+      "location": "/entrar?destino=%2Fhistorico"
+    },
+    {
+      "path": "/iceberg",
+      "status": 307,
+      "location": "/entrar?destino=%2Ficeberg"
+    },
+    {
+      "path": "/inicio",
+      "status": 307,
+      "location": "/entrar?destino=%2Finicio"
+    },
+    {
+      "path": "/integracoes",
+      "status": 307,
+      "location": "/entrar?destino=%2Fintegracoes"
+    },
+    {
+      "path": "/leads",
+      "status": 307,
+      "location": "/entrar?destino=%2Fleads"
+    },
+    {
+      "path": "/lista",
+      "status": 307,
+      "location": "/entrar?destino=%2Flista"
+    },
+    {
+      "path": "/listas",
+      "status": 307,
+      "location": "/entrar?destino=%2Flistas"
+    },
+    {
+      "path": "/manifest.json",
+      "status": 307,
+      "location": "/entrar?destino=%2Fmanifest.json"
+    },
+    {
+      "path": "/manifest.webmanifest",
+      "status": 200,
+      "location": ""
+    },
+    {
+      "path": "/mapa",
+      "status": 307,
+      "location": "/entrar?destino=%2Fmapa"
+    },
+    {
+      "path": "/mensagens",
+      "status": 307,
+      "location": "/entrar?destino=%2Fmensagens"
+    },
+    {
+      "path": "/modelos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fmodelos"
+    },
+    {
+      "path": "/nichos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fnichos"
+    },
+    {
+      "path": "/painel",
+      "status": 307,
+      "location": "/entrar?destino=%2Fpainel"
+    },
+    {
+      "path": "/perfil",
+      "status": 307,
+      "location": "/entrar?destino=%2Fperfil"
+    },
+    {
+      "path": "/pesquisa",
+      "status": 307,
+      "location": "/entrar?destino=%2Fpesquisa"
+    },
+    {
+      "path": "/pesquisar",
+      "status": 307,
+      "location": "/entrar?destino=%2Fpesquisar"
+    },
+    {
+      "path": "/pipeline",
+      "status": 307,
+      "location": "/entrar?destino=%2Fpipeline"
+    },
+    {
+      "path": "/planos",
+      "status": 200,
+      "location": ""
+    },
+    {
+      "path": "/precos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fprecos"
+    },
+    {
+      "path": "/privacidade",
+      "status": 307,
+      "location": "/entrar?destino=%2Fprivacidade"
+    },
+    {
+      "path": "/prospeccao",
+      "status": 307,
+      "location": "/entrar?destino=%2Fprospeccao"
+    },
+    {
+      "path": "/prospectar",
+      "status": 307,
+      "location": "/entrar?destino=%2Fprospectar"
+    },
+    {
+      "path": "/recovery",
+      "status": 307,
+      "location": "/entrar?destino=%2Frecovery"
+    },
+    {
+      "path": "/recuperar-senha",
+      "status": 200,
+      "location": ""
+    },
+    {
+      "path": "/relatorios",
+      "status": 307,
+      "location": "/entrar?destino=%2Frelatorios"
+    },
+    {
+      "path": "/robots.txt",
+      "status": 307,
+      "location": "/entrar?destino=%2Frobots.txt"
+    },
+    {
+      "path": "/salvos",
+      "status": 307,
+      "location": "/entrar?destino=%2Fsalvos"
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 307,
+      "location": "/entrar?destino=%2Fsitemap.xml"
+    },
+    {
+      "path": "/sites",
+      "status": 307,
+      "location": "/entrar?destino=%2Fsites"
+    },
+    {
+      "path": "/templates",
+      "status": 307,
+      "location": "/entrar?destino=%2Ftemplates"
+    },
+    {
+      "path": "/termos",
+      "status": 307,
+      "location": "/entrar?destino=%2Ftermos"
+    },
+    {
+      "path": "/vector",
+      "status": 307,
+      "location": "/entrar?destino=%2Fvector"
+    },
+    {
+      "path": "/whatsapp",
+      "status": 307,
+      "location": "/entrar?destino=%2Fwhatsapp"
+    }
+  ],
+  "textsPt": [
+    "A confirmação de e-mail ainda está ativa no Supabase. Desative Confirm email para concluir o cadastro e entrar automaticamente.",
+    "A senha precisa de pelo menos 8 caracteres.",
+    "Ainda não tem conta?",
+    "Diga o e-mail da conta e mandamos um link pra escolher outra.",
+    "Digite a sua senha.",
+    "Digite o seu e-mail.",
+    "E-mail ou senha não conferem.",
+    "Encontre empresas sem site no Brasil e em Portugal, e organize seus contatos num só lugar.",
+    "Esse e-mail já tem conta. Tente entrar.",
+    "Esse e-mail não parece certo.",
+    "Esse endereço não é aceito. Use um e-mail de verdade, que receba mensagem.",
+    "Esta conta foi criada antes da confirmação de e-mail ser desativada. Fale com o suporte.",
+    "Este link de recuperação já foi consumido. Solicite um novo para continuar.",
+    "Este link usa o formato PKCE antigo e não encontrou a verificação necessária neste navegador. Solicite um novo link de recuperação.",
+    "Força da senha:",
+    "Já tem conta?",
+    "Link inválido",
+    "Link já utilizado",
+    "Muitas tentativas seguidas. Espere um minuto e tente de novo.",
+    "Não deu pra concluir agora. Tente de novo.",
+    "Não deu pra criar a conta agora.",
+    "Não deu pra entrar agora.",
+    "Não deu pra enviar agora.",
+    "Não deu pra falar com o servidor. Confira a sua conexão.",
+    "Não foi possível enviar o código para este endereço. Fale com o suporte.",
+    "Não foi possível validar o acesso",
+    "Não foi possível validar o link",
+    "O código está incorreto ou expirou. Confira os seis números ou peça um novo código.",
+    "O envio de e-mails atingiu o limite por hora. Tente daqui a pouco.",
+    "O redirecionamento não trouxe uma credencial de recuperação válida. Solicite um novo link e tente novamente.",
+    "Se houver conta com",
+    "Se não chegar em alguns minutos, olhe o spam. O link vale por uma hora.",
+    "Seu nome",
+    "Use o e-mail da sua conta.",
+    "Use seu nome, e-mail e uma senha segura.",
+    "WEBVEE Leads",
+    "Webvee Leads"
+  ]
+}
