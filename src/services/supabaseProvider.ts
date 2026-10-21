@@ -25,9 +25,17 @@ function db() {
 export const supabaseProvider: DataProvider = {
   name: 'supabase',
   async list<K extends CollectionName>(collection: K) {
-    const { data, error } = await db().from(collection).select('*')
-    if (error) throw error
-    return (data ?? []).map((r) => fromRow<Collections[K]>(r))
+    // O Supabase devolve no máximo 1000 linhas por pedido: lê em páginas,
+    // senão os lançamentos mais antigos sumiriam das contas sem aviso.
+    const PAGE = 1000
+    const rows: Record<string, unknown>[] = []
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db().from(collection).select('*').order('id').range(from, from + PAGE - 1)
+      if (error) throw error
+      rows.push(...(data ?? []))
+      if (!data || data.length < PAGE) break
+    }
+    return rows.map((r) => fromRow<Collections[K]>(r))
   },
   async insert<K extends CollectionName>(collection: K, record: Collections[K]) {
     const { data, error } = await db().from(collection).insert(toRow(record)).select().single()

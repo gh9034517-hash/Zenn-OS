@@ -20,7 +20,7 @@ export default function Login() {
   const supabaseAuth = integrations.supabase
 
   if (!onboarded) return <Navigate to="/welcome" replace />
-  if (session) return <Navigate to="/" replace />
+  if (session) return <Navigate to="/geral" replace />
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
@@ -29,7 +29,7 @@ export default function Login() {
     try {
       if (supabaseAuth) await signInSupabase(email, password)
       else signInLocal(name || email.split('@')[0] || 'Operador', email)
-      navigate('/')
+      navigate('/geral')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao entrar.')
     } finally {

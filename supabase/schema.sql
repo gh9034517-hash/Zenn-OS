@@ -184,3 +184,132 @@ end $$;
 -- Para liberar uma pessoa nova (rode no SQL Editor do Supabase):
 --   insert into public.app_members (user_id, email)
 --   select id, email from auth.users where email = 'pessoa@empresa.com';
+
+-- ============================================================
+-- Espaços separados (Pessoal, Trabalho...) com finanças próprias.
+-- Zenn Works continua usando as tabelas acima.
+-- ============================================================
+create table if not exists public.spaces (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  name text not null,
+  kind text not null default 'pessoal' check (kind in ('pessoal','empresa')),
+  position integer not null default 0
+);
+
+create table if not exists public.wallets (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  name text not null,
+  kind text not null default 'banco' check (kind in ('banco','caixa','cartao','investimento')),
+  initial_balance numeric(14,2) not null default 0,
+  archived boolean not null default false
+);
+
+-- Lançamentos: receitas e despesas de cada espaço.
+-- link_id liga os dois lados de uma transferência ou de "meu pagamento";
+-- is_transfer = movimento entre carteiras (não conta como receita/despesa).
+create table if not exists public.entries (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  type text not null check (type in ('receita','despesa')),
+  description text not null,
+  amount numeric(14,2) not null check (amount > 0),
+  category text not null default '',
+  date date not null,
+  status text not null check (status in ('pago','pendente')),
+  paid_at timestamptz,
+  wallet_id text references public.wallets(id) on delete set null,
+  method text not null default 'pix' check (method in ('pix','boleto','cartao','transferencia','dinheiro')),
+  counterparty text not null default '',
+  notes text not null default '',
+  recurring_id text,
+  link_id text,
+  is_transfer boolean not null default false,
+  installment text
+);
+
+-- Contas fixas: geram um lançamento pendente por mês (last_generated = YYYY-MM).
+create table if not exists public.recurrings (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  type text not null check (type in ('receita','despesa')),
+  description text not null,
+  amount numeric(14,2) not null check (amount > 0),
+  category text not null default '',
+  day integer not null default 5 check (day between 1 and 31),
+  wallet_id text references public.wallets(id) on delete set null,
+  method text not null default 'pix' check (method in ('pix','boleto','cartao','transferencia','dinheiro')),
+  counterparty text not null default '',
+  active boolean not null default true,
+  start_month text not null,
+  last_generated text
+);
+
+create table if not exists public.budgets (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  category text not null,
+  monthly_limit numeric(14,2) not null check (monthly_limit > 0),
+  unique (space_id, category)
+);
+
+create table if not exists public.goals (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  name text not null,
+  target numeric(14,2) not null check (target > 0),
+  saved numeric(14,2) not null default 0,
+  deadline date
+);
+
+create table if not exists public.reminders (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  title text not null,
+  due_date date,
+  done boolean not null default false,
+  notes text not null default ''
+);
+
+create index if not exists entries_space_date_idx on public.entries(space_id, date);
+create index if not exists wallets_space_idx on public.wallets(space_id);
+create index if not exists recurrings_space_idx on public.recurrings(space_id);
+create index if not exists reminders_space_idx on public.reminders(space_id);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['spaces','wallets','entries','recurrings','budgets','goals','reminders'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "members_all" on public.%I', t);
+    execute format(
+      'create policy "members_all" on public.%I for all to authenticated '
+      'using (public.is_app_member()) with check (public.is_app_member())', t);
+  end loop;
+end $$;
+
+insert into public.spaces (id, name, kind, position) values
+  ('pessoal', 'Pessoal', 'pessoal', 1),
+  ('trabalho', 'Trabalho', 'empresa', 2)
+on conflict (id) do nothing;

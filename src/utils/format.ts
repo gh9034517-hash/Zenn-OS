@@ -39,7 +39,11 @@ export function formatRelative(value: string): string {
   return formatDate(value)
 }
 
-export const todayISO = () => new Date().toISOString().slice(0, 10)
+/** Data de hoje no fuso do aparelho (toISOString viraria o dia às 21h no Brasil). */
+export const todayISO = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 export function monthKey(value: string): string {
   return value.slice(0, 7)

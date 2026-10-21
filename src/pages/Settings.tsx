@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Download, MapPinned, RefreshCw, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed, KeyRound, ExternalLink } from 'lucide-react'
+import { Database, Download, MapPinned, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed, KeyRound, ExternalLink } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -10,10 +10,12 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { FacebookIcon } from '@/components/ui/BrandIcons'
 import { Mascot } from '@/components/brand/Mascot'
 import { useData } from '@/context/DataContext'
+import { useSpaces } from '@/context/SpacesContext'
+import { SpacesSettingsCard } from '@/components/space/SpacesSettingsCard'
 import { useSession } from '@/context/SessionContext'
 import { useToast } from '@/components/ui/Toast'
 import { integrations, env } from '@/lib/env'
-import { importSnapshot, type Snapshot } from '@/services/database'
+import { importSnapshot, provider, type Snapshot } from '@/services/database'
 import { downloadFile } from '@/utils/csv'
 import { GOOGLE_KEY, getSetting, setSetting } from '@/services/appSettings'
 
@@ -228,23 +230,29 @@ function IntegrationRow({ icon, name, configured, detail, envVars }: { icon: Rea
 
 export default function Settings() {
   const data = useData()
+  const spacesData = useSpaces()
   const { session, updateProfile } = useSession()
   const toast = useToast()
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState(session?.name ?? '')
   const [email, setEmail] = useState(session?.email ?? '')
-  const [confirm, setConfirm] = useState<null | 'reseed' | 'clearDemo' | 'reset'>(null)
+  const [confirm, setConfirm] = useState<null | 'clearDemo' | 'reset'>(null)
 
   const counts = [
     ['Leads', data.leads.length], ['Clientes', data.clients.length], ['Projetos', data.projects.length], ['Tarefas', data.tasks.length],
     ['Transações', data.transactions.length], ['Pagamentos', data.payments.length], ['Atividades', data.activities.length],
+    ['Lançamentos', spacesData.entries.length],
   ] as const
 
+  // Espaços (Pessoal, Trabalho...) entram no mesmo backup, na ordem certa para importar.
+  const SPACE_KEYS = ['spaces', 'wallets', 'entries', 'recurrings', 'budgets', 'goals', 'reminders'] as const
+
   const exportBackup = () => {
-    const snapshot: Snapshot = {
+    const snapshot = {
       leads: data.leads, clients: data.clients, projects: data.projects, tasks: data.tasks,
       transactions: data.transactions, payments: data.payments, activities: data.activities,
+      ...Object.fromEntries(SPACE_KEYS.map((k) => [k, spacesData[k]])),
     }
     downloadFile(`zenn-os-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(snapshot, null, 2), 'application/json')
     toast.success('Backup exportado')
@@ -255,11 +263,18 @@ export default function Settings() {
       const parsed = JSON.parse(await file.text()) as Partial<Snapshot>
       const existing = new Set([...data.leads, ...data.clients, ...data.projects, ...data.tasks, ...data.transactions, ...data.payments, ...data.activities].map((r) => r.id))
       const fresh = Object.fromEntries(
-        Object.entries(parsed).map(([k, rows]) => [k, Array.isArray(rows) ? rows.filter((r: { id?: string }) => r?.id && !existing.has(r.id)) : []]),
+        Object.entries(parsed).filter(([k]) => !(SPACE_KEYS as readonly string[]).includes(k)).map(([k, rows]) => [k, Array.isArray(rows) ? rows.filter((r: { id?: string }) => r?.id && !existing.has(r.id)) : []]),
       ) as Partial<Snapshot>
       await importSnapshot(fresh)
-      await data.refresh()
-      const total = Object.values(fresh).reduce((a, r) => a + (r?.length ?? 0), 0)
+      let total = Object.values(fresh).reduce((a, r) => a + (r?.length ?? 0), 0)
+      const raw = parsed as Record<string, unknown>
+      for (const key of SPACE_KEYS) {
+        const known = new Set((spacesData[key] as { id: string }[]).map((r) => r.id))
+        const rows = Array.isArray(raw[key]) ? (raw[key] as { id?: string }[]).filter((r) => r?.id && !known.has(r.id)) : []
+        if (rows.length) await provider.insertMany(key, rows as never[])
+        total += rows.length
+      }
+      await Promise.all([data.refresh(), spacesData.refresh()])
       toast.success('Backup importado', `${total} registros novos`)
     } catch (e) {
       toast.error('Arquivo inválido', e instanceof Error ? e.message : undefined)
@@ -268,7 +283,7 @@ export default function Settings() {
 
   return (
     <>
-      <PageHeader eyebrow="Sistema" title="Configurações" description="Perfil, integrações e gestão dos dados." />
+      <PageHeader eyebrow="Sistema" title="Configurações" description="Perfil, espaços, segurança, integrações e backup dos dados." />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
@@ -293,15 +308,17 @@ export default function Settings() {
           </CardBody>
         </Card>
 
+        <SpacesSettingsCard />
+
         <Card className="lg:col-span-2">
           <CardHeader eyebrow="Integrações" title="Status das APIs" />
           <CardBody className="pt-2">
             <IntegrationRow icon={<MapPinned />} name="Google Places API" configured={integrations.googlePlaces} envVars={['GOOGLE_MAPS_API_KEY']}
-              detail={integrations.googlePlaces ? 'Buscas de prospecção usam dados reais (Places API New · Text Search).' : 'Sem chave: a prospecção gera resultados fictícios marcados como DEMO.'} />
+              detail={integrations.googlePlaces ? 'Buscas de prospecção usam dados reais (Places API New · Text Search).' : 'Sem chave: a prospecção usa o OpenStreetMap (gratuito). Com a chave do Google, vem mais telefone.'} />
             <IntegrationRow icon={<Database />} name="Supabase" configured={integrations.supabase} envVars={['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_DATA_PROVIDER']}
               detail={`Persistência atual: ${data.providerName === 'supabase' ? 'Supabase (Postgres)' : 'localStorage deste navegador'}. ${integrations.supabase && data.providerName !== 'supabase' ? 'Defina VITE_DATA_PROVIDER=supabase para usar o banco.' : ''} Schema em supabase/schema.sql.`} />
             <IntegrationRow icon={<FacebookIcon />} name="Meta Graph API" configured={integrations.meta} envVars={['META_ACCESS_TOKEN', 'META_APP_ID', 'META_GRAPH_VERSION']}
-              detail={integrations.meta ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.` : 'Sem token: o enriquecimento no detalhe do lead retorna dados DEMO.'} />
+              detail={integrations.meta ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.` : 'Sem token: o enriquecimento pelo Facebook/Instagram fica desligado.'} />
           </CardBody>
         </Card>
 
@@ -312,7 +329,7 @@ export default function Settings() {
         <Card className="lg:col-span-2">
           <CardHeader eyebrow="Dados" title="Base armazenada" action={<Badge tone="muted">{data.providerName}</Badge>} />
           <CardBody>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {counts.map(([label, n]) => (
                 <div key={label} className="rounded-xl border border-line px-3 py-2.5">
                   <p className="text-[10px] tracking-wider text-faint uppercase">{label}</p>
@@ -324,12 +341,13 @@ export default function Settings() {
               <Button variant="outline" icon={<Download className="size-4" />} onClick={exportBackup}>Exportar backup JSON</Button>
               <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>Importar backup</Button>
               <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importBackup(f); e.target.value = '' }} />
-              <Button variant="outline" icon={<RefreshCw className="size-4" />} onClick={() => setConfirm('reseed')}>Recarregar dados demo</Button>
-              <Button variant="outline" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('clearDemo')} disabled={!data.hasDemoData}>Remover dados demo</Button>
+              {data.hasDemoData && (
+                <Button variant="outline" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('clearDemo')}>Remover dados demo</Button>
+              )}
               <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('reset')}>Apagar tudo</Button>
             </div>
             <p className="mt-3 text-xs text-faint">
-              Dados demo são fictícios (40 leads, 10 clientes, 8 projetos, 30 tarefas, 30 transações) e marcados como DEMO em toda a interface.
+              O backup leva tudo: Zenn Works e os espaços (lançamentos, carteiras, contas fixas, metas e lembretes). Guarde de vez em quando.
             </p>
           </CardBody>
         </Card>
@@ -347,14 +365,6 @@ export default function Settings() {
       </div>
 
       <ConfirmDialog
-        open={confirm === 'reseed'}
-        onClose={() => setConfirm(null)}
-        title="Recarregar dados demo?"
-        description="Os registros DEMO atuais serão substituídos pelo conjunto original. Seus dados reais não são afetados."
-        confirmLabel="Recarregar"
-        onConfirm={async () => { await data.seedDemo(); toast.success('Dados demo recarregados') }}
-      />
-      <ConfirmDialog
         open={confirm === 'clearDemo'}
         onClose={() => setConfirm(null)}
         title="Remover dados demo?"
@@ -367,7 +377,7 @@ export default function Settings() {
         open={confirm === 'reset'}
         onClose={() => setConfirm(null)}
         title="Apagar todos os dados?"
-        description="Remove TODOS os leads, clientes, projetos, tarefas e transações. Exporte um backup antes."
+        description="Remove TODOS os leads, clientes, projetos, tarefas e transações da Zenn Works (os espaços Pessoal/Trabalho não são afetados). Exporte um backup antes."
         confirmLabel="Apagar tudo"
         danger
         onConfirm={async () => { await data.resetAll(); toast.success('Base zerada'); navigate('/') }}

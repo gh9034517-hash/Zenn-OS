@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Contact, CornerDownLeft, Search, Users, type LucideIcon } from 'lucide-react'
+import { Briefcase, Contact, CornerDownLeft, Receipt, Search, Users, type LucideIcon } from 'lucide-react'
 import { useData } from '@/context/DataContext'
-import { normalize } from '@/utils/format'
+import { useSpaces } from '@/context/SpacesContext'
+import { formatCurrency, formatDateShort, normalize } from '@/utils/format'
 import { LEAD_STATUS_LABEL, PROJECT_STATUS_LABEL, CLIENT_STATUS_LABEL } from '@/data/constants'
 import { cn } from '@/utils/cn'
 
 interface Result {
   id: string
-  kind: 'Lead' | 'Cliente' | 'Projeto'
+  kind: 'Lead' | 'Cliente' | 'Projeto' | 'Lançamento'
   icon: LucideIcon
   title: string
   subtitle: string
@@ -20,6 +21,7 @@ interface Result {
 /** Busca global: empresa, telefone, cidade, categoria, cliente e projeto. */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { leads, clients, projects } = useData()
+  const { entries, spaces } = useSpaces()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -77,9 +79,21 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           meta: LEAD_STATUS_LABEL[l.status],
           to: `/leads?lead=${l.id}`,
         })),
+      ...entries
+        .filter((e) => match(e.description, e.category, e.counterparty, e.notes))
+        .slice(0, 15)
+        .map((e) => ({
+          id: e.id,
+          kind: 'Lançamento' as const,
+          icon: Receipt,
+          title: e.description,
+          subtitle: [spaces.find((s) => s.id === e.spaceId)?.name, e.category, formatDateShort(e.date)].filter(Boolean).join(' · '),
+          meta: `${e.type === 'receita' ? '+' : '−'} ${formatCurrency(e.amount)}`,
+          to: `/e/${e.spaceId}/movimentacoes?mes=${e.date.slice(0, 7)}`,
+        })),
     ]
     return out.slice(0, 30)
-  }, [query, leads, clients, projects])
+  }, [query, leads, clients, projects, entries, spaces])
 
   useEffect(() => setActive(0), [query])
 
@@ -116,7 +130,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Empresa, telefone, cidade, categoria, cliente ou projeto…"
+            placeholder="Empresa, telefone, cliente, projeto ou lançamento…"
             className="h-14 flex-1 bg-transparent text-[15px] outline-none placeholder:text-faint"
           />
           <kbd className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint">ESC</kbd>
@@ -124,7 +138,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         <div className="max-h-[55vh] overflow-y-auto p-2">
           {!query.trim() && (
             <p className="px-3 py-8 text-center text-sm text-faint">
-              Digite para buscar em {leads.length} leads, {clients.length} clientes e {projects.length} projetos.
+              Digite para buscar em {leads.length} leads, {clients.length} clientes, {projects.length} projetos e {entries.length} lançamentos.
             </p>
           )}
           {query.trim() && results.length === 0 && (
@@ -152,7 +166,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               </span>
               <span className="hidden text-right sm:block">
                 <span className="block text-[10px] tracking-wider text-faint uppercase">{r.kind}</span>
-                <span className="block text-xs text-muted">{r.meta}</span>
+                <span className={cn('block text-xs text-muted', r.kind === 'Lançamento' && 'money')}>{r.meta}</span>
               </span>
               {i === active && <CornerDownLeft className="size-3.5 text-faint" />}
             </button>

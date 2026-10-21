@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/layouts/AppLayout'
 import Welcome from '@/pages/Welcome'
 import Login from '@/pages/Login'
+import { SpaceLayout } from '@/layouts/SpaceLayout'
 
 const Dashboard = lazy(() => import('@/pages/Dashboard'))
 const FindLeads = lazy(() => import('@/pages/FindLeads'))
@@ -15,6 +16,15 @@ const Tasks = lazy(() => import('@/pages/Tasks'))
 const Finance = lazy(() => import('@/pages/Finance'))
 const Analytics = lazy(() => import('@/pages/Analytics'))
 const Settings = lazy(() => import('@/pages/Settings'))
+const Overview = lazy(() => import('@/pages/Overview'))
+const SpaceHome = lazy(() => import('@/pages/space/SpaceHome'))
+const SpaceEntries = lazy(() => import('@/pages/space/SpaceEntries'))
+const SpaceBills = lazy(() => import('@/pages/space/SpaceBills'))
+const SpaceRecurring = lazy(() => import('@/pages/space/SpaceRecurring'))
+const SpaceWallets = lazy(() => import('@/pages/space/SpaceWallets'))
+const SpacePlanning = lazy(() => import('@/pages/space/SpacePlanning'))
+const SpaceReport = lazy(() => import('@/pages/space/SpaceReport'))
+const SpaceReminders = lazy(() => import('@/pages/space/SpaceReminders'))
 
 export default function App() {
   return (
@@ -33,6 +43,17 @@ export default function App() {
         <Route path="financeiro" element={<Finance />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="configuracoes" element={<Settings />} />
+        <Route path="geral" element={<Overview />} />
+        <Route path="e/:spaceId" element={<SpaceLayout />}>
+          <Route index element={<SpaceHome />} />
+          <Route path="movimentacoes" element={<SpaceEntries />} />
+          <Route path="contas" element={<SpaceBills />} />
+          <Route path="fixas" element={<SpaceRecurring />} />
+          <Route path="carteiras" element={<SpaceWallets />} />
+          <Route path="planejamento" element={<SpacePlanning />} />
+          <Route path="relatorio" element={<SpaceReport />} />
+          <Route path="lembretes" element={<SpaceReminders />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

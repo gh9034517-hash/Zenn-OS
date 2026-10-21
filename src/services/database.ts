@@ -98,7 +98,7 @@ export const provider: DataProvider = useSupabaseProvider ? supabaseProvider : l
 // ------------------------------------------------------------
 // Helpers genéricos
 // ------------------------------------------------------------
-function build<T extends BaseRecord>(data: NewRecord<T>, prefix: string): T {
+export function build<T extends BaseRecord>(data: NewRecord<T>, prefix: string): T {
   const now = new Date().toISOString()
   return {
     ...data,
@@ -153,15 +153,8 @@ export const getActivities = async () => (await provider.list('activities')).sor
 export const createActivity = (data: NewRecord<Activity>) =>
   provider.insert('activities', build<Activity>(data, 'act'))
 
-export const ALL_COLLECTIONS: CollectionName[] = [
-  'leads',
-  'clients',
-  'projects',
-  'tasks',
-  'transactions',
-  'payments',
-  'activities',
-]
+/** Coleções da Zenn Works (os espaços Pessoal/Trabalho ficam no SpacesContext). */
+export const ALL_COLLECTIONS = ['leads', 'clients', 'projects', 'tasks', 'transactions', 'payments', 'activities'] as const satisfies readonly CollectionName[]
 
 export async function loadAll() {
   const [leads, clients, projects, tasks, transactions, payments, activities] = await Promise.all([

@@ -142,6 +142,93 @@ export interface Activity extends BaseRecord {
   entityId: string | null
 }
 
+// ------------------------------------------------------------
+// Espaços separados (Pessoal, Trabalho...) com finanças próprias.
+// Zenn Works é o espaço "embutido" e continua com os modelos acima.
+// ------------------------------------------------------------
+
+export type SpaceKind = 'pessoal' | 'empresa'
+
+export interface Space extends BaseRecord {
+  name: string
+  kind: SpaceKind
+  position: number
+}
+
+export type WalletKind = 'banco' | 'caixa' | 'cartao' | 'investimento'
+
+export interface Wallet extends BaseRecord {
+  spaceId: string
+  name: string
+  kind: WalletKind
+  initialBalance: number
+  archived: boolean
+}
+
+export interface Entry extends BaseRecord {
+  spaceId: string
+  type: TransactionType
+  description: string
+  amount: number
+  category: string
+  /** vencimento / data do movimento (YYYY-MM-DD) */
+  date: string
+  status: TransactionStatus
+  paidAt: string | null
+  walletId: string | null
+  method: PaymentMethod
+  /** fornecedor, cliente ou pessoa */
+  counterparty: string
+  notes: string
+  recurringId: string | null
+  /** liga os dois lados de uma transferência ou de "meu pagamento" */
+  linkId: string | null
+  /** movimento entre carteiras: mexe no saldo, não é receita nem despesa */
+  isTransfer: boolean
+  /** "2/10" quando parcelado */
+  installment: string | null
+}
+
+export interface Recurring extends BaseRecord {
+  spaceId: string
+  type: TransactionType
+  description: string
+  amount: number
+  category: string
+  /** dia do vencimento (1–31; meses curtos usam o último dia) */
+  day: number
+  walletId: string | null
+  method: PaymentMethod
+  counterparty: string
+  active: boolean
+  /** YYYY-MM */
+  startMonth: string
+  /** último mês (YYYY-MM) já lançado */
+  lastGenerated: string | null
+}
+
+export interface Budget extends BaseRecord {
+  spaceId: string
+  category: string
+  monthlyLimit: number
+}
+
+export interface Goal extends BaseRecord {
+  spaceId: string
+  name: string
+  target: number
+  saved: number
+  deadline: string | null
+}
+
+export interface Reminder extends BaseRecord {
+  spaceId: string
+  title: string
+  dueDate: string | null
+  done: boolean
+  notes: string
+}
+
 export interface Collections {
   leads: Lead
   clients: Client
@@ -150,6 +237,13 @@ export interface Collections {
   transactions: Transaction
   payments: Payment
   activities: Activity
+  spaces: Space
+  wallets: Wallet
+  entries: Entry
+  recurrings: Recurring
+  budgets: Budget
+  goals: Goal
+  reminders: Reminder
 }
 
 export type CollectionName = keyof Collections

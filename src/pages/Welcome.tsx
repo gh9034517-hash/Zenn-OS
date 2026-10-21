@@ -26,7 +26,7 @@ export default function Welcome() {
 
   const finish = () => {
     completeOnboarding()
-    navigate(session ? '/' : '/login')
+    navigate(session ? '/geral' : '/login')
   }
 
   return (

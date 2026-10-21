@@ -15,6 +15,8 @@ export function Segmented<T extends string>({
       {options.map((o) => (
         <button
           key={o.value}
+          type="button"
+          aria-pressed={value === o.value}
           onClick={() => onChange(o.value)}
           className={cn(
             'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 [&_svg]:size-3.5',
