@@ -12,6 +12,7 @@ on:
     branches: [claude/zenn-os-build-g2subh]
     paths:
       - 'scripts/inspect-site.mjs'
+      - 'scripts/inspect-bundle.mjs'
       - '.github/workflows/inspect-reference.yml'
 
 permissions:
@@ -34,6 +35,11 @@ jobs:
         env:
           URL: ${{ github.event.inputs.url || 'https://webvee-leads-v2.vercel.app' }}
         run: node scripts/inspect-site.mjs "$URL" /tmp/inspect-out
+      - name: Arquivos públicos e rotas
+        if: always()
+        env:
+          URL: ${{ github.event.inputs.url || 'https://webvee-leads-v2.vercel.app' }}
+        run: node scripts/inspect-bundle.mjs "$URL" /tmp/inspect-out
       - name: Publicar no branch ref-inspect
         if: always()
         run: |
