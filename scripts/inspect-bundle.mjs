@@ -22,7 +22,7 @@ page.on('request', (r) => {
   if (u.startsWith(origin) && /\.(js|css)(\?|$)/.test(u)) scripts.add(u.split('?')[0])
 })
 
-const seedPages = ['/', '/entrar', '/criar-conta', '/recuperar-senha']
+const seedPages = ['/', '/entrar', '/criar-conta', '/recuperar-senha', '/planos']
 const html = {}
 for (const p of seedPages) {
   await page.goto(origin + p, { waitUntil: 'networkidle', timeout: 45000 }).catch(() => {})
@@ -99,8 +99,9 @@ for (const g of guesses.slice(0, 160)) {
   try {
     const r = await ctx.request.get(origin + g, { maxRedirects: 0, timeout: 15000 })
     const loc = r.headers()['location'] || ''
-    const body = r.status() === 200 ? (await r.text()).slice(0, 600) : ''
-    probes.push({ path: g, status: r.status(), location: loc, sample: /\.(txt|xml|json|webmanifest)$/.test(g) ? body : undefined })
+    const body = r.status() === 200 ? await r.text() : ''
+    if (body && /\.(txt|xml|json|webmanifest)$/.test(g)) await writeFile(join(OUT, `public${g.replace(/\//g, '_')}`), body)
+    probes.push({ path: g, status: r.status(), location: loc })
   } catch (e) {
     probes.push({ path: g, error: String(e).slice(0, 120) })
   }
