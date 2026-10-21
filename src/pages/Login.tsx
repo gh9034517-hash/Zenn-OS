@@ -6,14 +6,24 @@ import { Logo } from '@/components/brand/Logo'
 import { asset } from '@/utils/asset'
 import { Button } from '@/components/ui/Button'
 import { FormField, Input } from '@/components/ui/Field'
-import { useSession } from '@/context/SessionContext'
+import { EXPIRED_FLAG, useSession } from '@/context/SessionContext'
 import { integrations } from '@/lib/env'
 
 export default function Login() {
   const { session, onboarded, signInLocal, signInSupabase, signUpSupabase } = useSession()
   const navigate = useNavigate()
   const [mode, setMode] = useState<'entrar' | 'criar'>('entrar')
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(() => {
+    try {
+      if (sessionStorage.getItem(EXPIRED_FLAG)) {
+        sessionStorage.removeItem(EXPIRED_FLAG)
+        return 'Seu login expirou neste aparelho. Entre de novo com seu e-mail e senha — seus dados continuam todos lá.'
+      }
+    } catch {
+      /* armazenamento indisponível */
+    }
+    return null
+  })
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')

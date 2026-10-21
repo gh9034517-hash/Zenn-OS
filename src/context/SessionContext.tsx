@@ -2,13 +2,15 @@
 // Modo "local": perfil salvo no navegador (sem autenticação real — indicado na UI).
 // Modo "supabase": autenticação real via Supabase Auth (e-mail + senha).
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@/types'
 import { getSupabase } from '@/lib/supabase'
 import { integrations } from '@/lib/env'
 
 const KEY = 'zenn-os:session'
 const ONBOARDED = 'zenn-os:onboarded'
+/** Marca para a tela de entrada explicar por que voltou para ela. */
+export const EXPIRED_FLAG = 'zenn-os:session-expired'
 
 interface SessionContextValue {
   session: Session | null
@@ -58,6 +60,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     else localStorage.removeItem(KEY)
     setSession(s)
   }, [])
+
+  // Login real: se o Supabase perder a sessão (expirou, foi encerrada em
+  // outro aparelho, senha trocada), volta para a tela de entrada em vez de
+  // mostrar o sistema vazio como se fosse um visitante.
+  useEffect(() => {
+    if (!integrations.supabase) return
+    const sb = getSupabase()
+    if (!sb) return
+    const expire = () => {
+      if (readSession()?.mode !== 'supabase') return
+      try {
+        sessionStorage.setItem(EXPIRED_FLAG, '1')
+      } catch {
+        /* armazenamento indisponível */
+      }
+      persist(null)
+    }
+    const { data } = sb.auth.onAuthStateChange((event, s) => {
+      if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !s)) expire()
+    })
+    return () => data.subscription.unsubscribe()
+  }, [persist])
 
   const value: SessionContextValue = {
     session,
@@ -112,8 +136,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       if (error) throw error
     },
     signOut: async () => {
-      if (session?.mode === 'supabase') await getSupabase()?.auth.signOut()
+      // Sair de propósito não é "sessão expirada".
+      const local = { ...session }
       persist(null)
+      if (local?.mode === 'supabase') await getSupabase()?.auth.signOut()
     },
   }
 
