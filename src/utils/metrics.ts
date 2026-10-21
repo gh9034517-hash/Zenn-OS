@@ -1,8 +1,7 @@
 // Cálculos derivados — sempre a partir dos dados armazenados.
 import type { Client, Lead, Project, Task, Transaction } from '@/types'
 import { LEAD_STAGE_RANK } from '@/data/constants'
-import { hasNoWebsite } from '@/services/googlePlaces'
-import { todayISO } from './format'
+import { todayISO, hasNoWebsite } from './format'
 
 export const isOverdue = (t: Transaction) =>
   t.status === 'pendente' && t.date < todayISO()

@@ -13,6 +13,8 @@ import { spaceIcon } from '@/components/layout/Sidebar'
 import { useSpaces } from '@/context/SpacesContext'
 import { useData } from '@/context/DataContext'
 import { useSession } from '@/context/SessionContext'
+import { useAccess } from '@/context/AccessContext'
+import { usePrefs } from '@/context/PrefsContext'
 import { useToast } from '@/components/ui/Toast'
 import { addDays, currentYM, isEntryOverdue, localISO, monthTotals, spaceWords, walletBalance } from '@/services/spaceMath'
 import { formatDateShort } from '@/utils/format'
@@ -82,7 +84,11 @@ function SpaceCard({
         <span>
           A pagar <Money value={toPay} className="text-fg-soft" />
         </span>
-        {late > 0 && <span className="text-danger">{late} atrasada{late > 1 ? 's' : ''}</span>}
+        {late > 0 && (
+          <span className="text-danger">
+            {late} atrasada{late > 1 ? 's' : ''}
+          </span>
+        )}
       </div>
     </Link>
   )
@@ -92,6 +98,9 @@ export default function Overview() {
   const { spaces, wallets, entries, reminders, setEntryPaid, updateReminder } = useSpaces()
   const { transactions } = useData()
   const { session } = useSession()
+  const { isAdmin, canWrite } = useAccess()
+  const { prefs } = usePrefs()
+  const showZenn = isAdmin && !prefs.hideZenn
   const toast = useToast()
   const navigate = useNavigate()
   const [ym, setYm] = useState(currentYM())
@@ -117,7 +126,15 @@ export default function Overview() {
   const lateOut = upcoming.filter((e) => e.type === 'despesa' && isEntryOverdue(e, today))
   const pendingReminders = reminders.filter((r) => !r.done).slice(0, 6)
   const allWallets = wallets.filter((w) => !w.archived)
-  const totalBalance = allWallets.reduce((a, w) => a + walletBalance(w, entries.filter((e) => e.spaceId === w.spaceId)), 0)
+  const totalBalance = allWallets.reduce(
+    (a, w) =>
+      a +
+      walletBalance(
+        w,
+        entries.filter((e) => e.spaceId === w.spaceId),
+      ),
+    0,
+  )
   const company = spaces.find((s) => s.kind === 'empresa')
   const personal = spaces.find((s) => s.kind === 'pessoal')
 
@@ -146,11 +163,15 @@ export default function Overview() {
             {greeting()}, <span className="text-metal font-normal">{session?.name?.split(' ')[0]}</span>
           </>
         }
-        description="Tudo o que você administra, num lugar só: a Zenn Works, o trabalho e o seu dinheiro."
+        description={
+          showZenn
+            ? 'Tudo o que você administra, num lugar só: a Zenn Works, o trabalho e o seu dinheiro.'
+            : 'Tudo o que você administra, num lugar só.'
+        }
         actions={
           <>
             <MonthPicker value={ym} onChange={setYm} />
-            {company && personal && (
+            {company && personal && canWrite(company.id) && canWrite(personal.id) && (
               <Button variant="outline" icon={<HandCoins className="size-4" />} onClick={() => setPayOpen(true)}>
                 Meu pagamento
               </Button>
@@ -169,7 +190,7 @@ export default function Overview() {
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {spaces.map((s) => {
           const mine = entries.filter((e) => e.spaceId === s.id)
           const t = monthTotals(mine, ym)
@@ -192,22 +213,33 @@ export default function Overview() {
             />
           )
         })}
-        <SpaceCard
-          to="/financeiro"
-          icon={<LogoMark className="size-5" />}
-          name="Zenn Works"
-          kind="Agência"
-          income={zenn.income}
-          expense={zenn.expense}
-          result={zenn.income - zenn.expense}
-          resultLabel="Lucro do mês"
-          toPay={zenn.toPay}
-          late={zenn.late}
-          balance={null}
-        />
+        {showZenn && (
+          <SpaceCard
+            to="/financeiro"
+            icon={<LogoMark className="size-5" />}
+            name="Zenn Works"
+            kind="Agência"
+            income={zenn.income}
+            expense={zenn.expense}
+            result={zenn.income - zenn.expense}
+            resultLabel="Lucro do mês"
+            toPay={zenn.toPay}
+            late={zenn.late}
+            balance={null}
+          />
+        )}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+      {!spaces.length && !isAdmin && (
+        <Card className="mt-4">
+          <CardBody className="text-center">
+            <p className="text-sm text-fg">Sua conta ainda não tem nenhum espaço liberado.</p>
+            <p className="mt-1 text-xs text-muted">Peça ao administrador para liberar o seu acesso — depois é só entrar de novo.</p>
+          </CardBody>
+        </Card>
+      )}
+
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="overflow-hidden lg:col-span-3">
           <CardHeader eyebrow="Todos os espaços" title="Vence nos próximos 7 dias" />
           {upcoming.length ? (
@@ -219,7 +251,7 @@ export default function Overview() {
                   wallets={wallets}
                   extra={spaces.find((s) => s.id === e.spaceId)?.name}
                   onEdit={() => navigate(`/e/${e.spaceId}/contas`)}
-                  onTogglePaid={() => toggle(e.id)}
+                  onTogglePaid={canWrite(e.spaceId) ? () => toggle(e.id) : undefined}
                   busy={busyId === e.id}
                 />
               ))}

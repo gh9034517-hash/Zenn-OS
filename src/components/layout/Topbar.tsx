@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/Button'
 import { useData } from '@/context/DataContext'
 import { useActiveSpace } from '@/hooks/useActiveSpace'
 import { useHideValues } from '@/components/space/Money'
+import { useAccess } from '@/context/AccessContext'
 import { openNewEntry } from '@/utils/events'
 
 export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; onOpenSearch: () => void }) {
@@ -13,6 +14,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
   const { hasDemoData } = useData()
   const { key, space, groups } = useActiveSpace()
   const [hidden, toggleHidden] = useHideValues()
+  const { canWrite } = useAccess()
   const items = groups.flatMap((g) => g.items.map((i) => ({ ...i, group: g.label })))
   // O item mais específico que casa com a URL (Resumo /e/x não engole /e/x/contas).
   const current = items
@@ -32,7 +34,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
 
       <div className="hidden min-w-0 items-center gap-2 text-sm md:flex">
         <span className="eyebrow text-faint">{where}</span>
-        {current && key !== 'geral' && (
+        {current && pathname !== '/geral' && (
           <>
             <span className="text-faint">/</span>
             <span className="truncate text-fg-soft">{current.label}</span>
@@ -66,11 +68,7 @@ export function Topbar({ onOpenMenu, onOpenSearch }: { onOpenMenu: () => void; o
       )}
 
       <div className="hidden sm:block">
-        {key === 'zenn' ? (
-          <Button variant="primary" size="sm" icon={<Plus className="size-3.5" />} onClick={() => navigate('/prospeccao')}>
-            Prospectar
-          </Button>
-        ) : space ? (
+        {space && canWrite(space.id) ? (
           <Button variant="primary" size="sm" icon={<Plus className="size-3.5" />} onClick={openNewEntry}>
             Lançar
           </Button>

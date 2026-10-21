@@ -2,13 +2,15 @@ import {
   BarChart3,
   Bell,
   Briefcase,
+  Calculator,
+  Hammer,
+  Palette,
   CalendarClock,
   CheckSquare,
   FileText,
   LayoutDashboard,
   ListOrdered,
   PiggyBank,
-  Radar,
   Repeat,
   Settings,
   Users,
@@ -31,13 +33,12 @@ export interface NavGroup {
 export const NAVIGATION: NavGroup[] = [
   { label: 'Overview', items: [{ to: '/', label: 'Dashboard', icon: LayoutDashboard }] },
   {
-    label: 'Prospecção',
+    label: 'CRM',
     items: [
-      { to: '/prospeccao', label: 'Encontrar Leads', icon: Radar },
       { to: '/leads', label: 'Leads', icon: Contact },
+      { to: '/clientes', label: 'Clientes', icon: Users },
     ],
   },
-  { label: 'CRM', items: [{ to: '/clientes', label: 'Clientes', icon: Users }] },
   {
     label: 'Operação',
     items: [
@@ -49,16 +50,25 @@ export const NAVIGATION: NavGroup[] = [
   { label: 'Analytics', items: [{ to: '/analytics', label: 'Analytics', icon: BarChart3 }] },
 ]
 
-export const SYSTEM_NAV: NavGroup = { label: 'Sistema', items: [{ to: '/configuracoes', label: 'Configurações', icon: Settings }] }
+export const TOOLS_NAV: NavGroup = { label: 'Ferramentas', items: [{ to: '/calculadoras', label: 'Calculadoras', icon: Calculator }] }
 
-/** Menu de um espaço separado (Pessoal, Trabalho...). */
-export function spaceNavigation(spaceId: string): NavGroup[] {
+export const SYSTEM_NAV: NavGroup = {
+  label: 'Sistema',
+  items: [
+    { to: '/personalizar', label: 'Personalizar', icon: Palette },
+    { to: '/configuracoes', label: 'Configurações', icon: Settings },
+  ],
+}
+
+/** Menu de um espaço separado (Pessoal, Trabalho...). Empresas têm Serviços. */
+export function spaceNavigation(spaceId: string, kind: 'pessoal' | 'empresa'): NavGroup[] {
   const base = `/e/${spaceId}`
   return [
     {
       label: 'Dinheiro',
       items: [
         { to: base, label: 'Resumo', icon: LayoutDashboard },
+        ...(kind === 'empresa' ? [{ to: `${base}/servicos`, label: 'Serviços', icon: Hammer }] : []),
         { to: `${base}/movimentacoes`, label: 'Movimentações', icon: ListOrdered },
         { to: `${base}/contas`, label: 'Contas a pagar', icon: CalendarClock },
         { to: `${base}/fixas`, label: 'Contas fixas', icon: Repeat },

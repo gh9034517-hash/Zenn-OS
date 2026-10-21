@@ -91,7 +91,7 @@ export default function SpaceRecurring() {
               </p>
             </div>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {outs.length > 0 && <List title={`${words.outs} fixos`} rows={outs} />}
             {ins.length > 0 && <List title={`${words.ins} fixas`} rows={ins} />}
           </div>

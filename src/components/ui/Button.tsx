@@ -14,7 +14,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-gradient-to-b from-white to-[#cfcfd4] text-black shadow-[0_1px_0_rgba(255,255,255,0.6)_inset,0_8px_24px_-10px_rgba(255,255,255,0.45)] hover:to-white',
+    'bg-gradient-to-b from-accent to-accent-2 text-accent-ink shadow-[0_1px_0_rgba(255,255,255,0.5)_inset,0_8px_24px_-12px_var(--color-accent)] hover:brightness-110',
   secondary: 'bg-elevated text-fg border border-line hover:border-line-strong hover:bg-[#1c1c21]',
   outline: 'border border-line-strong text-fg hover:bg-white/[0.04] hover:border-white/30',
   ghost: 'text-fg-soft hover:text-fg hover:bg-white/[0.05]',

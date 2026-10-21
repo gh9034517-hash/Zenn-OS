@@ -22,7 +22,7 @@ export function CategoryBars({ rows, limit = 6, empty }: { rows: { category: str
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-[#6e6e74] via-white to-[#bdbdc2]"
+              className="h-full rounded-full bg-gradient-to-r from-accent-2 via-accent to-accent-2"
               style={{ width: `${Math.max(2, (r.total / max) * 100)}%` }}
             />
           </div>

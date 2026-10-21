@@ -89,7 +89,7 @@ export default function ClientDetail() {
         <Stat label="Valor pendente" value={formatCurrency(fin.pending)} hint="Contratado − recebido" />
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader eyebrow="Ficha" title="Contato" />
           <CardBody className="space-y-3 text-sm">
@@ -127,7 +127,7 @@ export default function ClientDetail() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="overflow-hidden lg:col-span-2">
           <CardHeader eyebrow="Financeiro" title="Transações" action={<Badge tone="muted">{clientTransactions.length}</Badge>} className="pb-4" />
           <div className="border-t border-line">

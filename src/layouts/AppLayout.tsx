@@ -6,11 +6,13 @@ import { CommandPalette } from '@/components/layout/CommandPalette'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useSession } from '@/context/SessionContext'
 import { useData } from '@/context/DataContext'
+import { useAccess } from '@/context/AccessContext'
 import { Mascot } from '@/components/brand/Mascot'
 
 export function AppLayout() {
   const { session, onboarded } = useSession()
   const { loading, error } = useData()
+  const access = useAccess()
   const [collapsed, setCollapsed] = useLocalStorage('zenn-os:sidebar-collapsed', false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -32,6 +34,9 @@ export function AppLayout() {
 
   if (!onboarded) return <Navigate to="/welcome" replace />
   if (!session) return <Navigate to="/login" replace />
+  // Contas de clientes não entram nas páginas da Zenn Works.
+  const zennRoute = pathname === '/' || ['/leads', '/clientes', '/projetos', '/tarefas', '/financeiro', '/analytics'].some((p) => pathname.startsWith(p))
+  if (!access.loading && !access.isAdmin && zennRoute) return <Navigate to="/geral" replace />
 
   return (
     <div className="min-h-dvh bg-void">

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { NAVIGATION, SYSTEM_NAV, spaceNavigation, type NavGroup } from '@/data/navigation'
+import { NAVIGATION, SYSTEM_NAV, TOOLS_NAV, spaceNavigation, type NavGroup } from '@/data/navigation'
+import { useAccess } from '@/context/AccessContext'
 import { useSpaces } from '@/context/SpacesContext'
 import type { Space } from '@/types'
 
@@ -17,16 +18,20 @@ function readLast(): SpaceKey {
   }
 }
 
-/** Espaço em uso, pela URL. Configurações é de todos: mantém o último. */
+/** Páginas que valem para todos os espaços: o menu continua no último usado. */
+const SHARED = ['/configuracoes', '/calculadoras', '/personalizar']
+
+/** Espaço em uso, pela URL. Páginas compartilhadas mantêm o último. */
 export function useActiveSpace(): { key: SpaceKey; space: Space | undefined; groups: NavGroup[] } {
   const { pathname } = useLocation()
   const { spaceById } = useSpaces()
+  const { isAdmin } = useAccess()
   const match = pathname.match(/^\/e\/([^/]+)/)
   const fromUrl: SpaceKey | null = match
     ? decodeURIComponent(match[1])
     : pathname === '/geral'
       ? 'geral'
-      : pathname.startsWith('/configuracoes')
+      : SHARED.some((p) => pathname.startsWith(p))
         ? null
         : 'zenn'
 
@@ -40,16 +45,18 @@ export function useActiveSpace(): { key: SpaceKey; space: Space | undefined; gro
   }, [fromUrl])
 
   let key = fromUrl ?? readLast()
+  // Contas de clientes não têm a Zenn Works.
+  if (key === 'zenn' && !isAdmin) key = 'geral'
   const space = key === 'zenn' || key === 'geral' ? undefined : spaceById(key)
-  // Espaço apagado: volta para a Zenn Works.
-  if (key !== 'zenn' && key !== 'geral' && !space && !fromUrl) key = 'zenn'
+  // Espaço apagado: volta para o início.
+  if (key !== 'zenn' && key !== 'geral' && !space && !fromUrl) key = isAdmin ? 'zenn' : 'geral'
 
   const groups =
     key === 'zenn'
-      ? [...NAVIGATION, SYSTEM_NAV]
+      ? [...NAVIGATION, TOOLS_NAV, SYSTEM_NAV]
       : space
-        ? [...spaceNavigation(space.id), SYSTEM_NAV]
-        : [SYSTEM_NAV]
+        ? [...spaceNavigation(space.id, space.kind), TOOLS_NAV, SYSTEM_NAV]
+        : [TOOLS_NAV, SYSTEM_NAV]
   return { key, space, groups }
 }
 

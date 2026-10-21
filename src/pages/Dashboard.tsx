@@ -2,7 +2,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { ArrowUpRight, Briefcase, CircleDollarSign, Clock, Contact, GlobeLock, Radar, Users } from 'lucide-react'
+import { ArrowUpRight, Briefcase, CircleDollarSign, Clock, Contact, GlobeLock, Users } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Stat } from '@/components/ui/Stat'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
@@ -16,8 +16,7 @@ import { CHART, axisProps } from '@/components/charts/theme'
 import { useData } from '@/context/DataContext'
 import { useSession } from '@/context/SessionContext'
 import { useMetrics } from '@/hooks/useMetrics'
-import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent } from '@/utils/format'
-import { hasNoWebsite } from '@/services/googlePlaces'
+import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, hasNoWebsite } from '@/utils/format'
 
 function greeting() {
   const h = new Date().getHours()
@@ -49,14 +48,14 @@ export default function Dashboard() {
             {greeting()}, <span className="text-metal font-normal">{session?.name?.split(' ')[0]}</span>
           </>
         }
-        description="Visão consolidada de prospecção, CRM, operação e financeiro."
+        description="Visão consolidada de leads, clientes, projetos e financeiro da Zenn Works."
         actions={
           <>
             <Button variant="outline" icon={<Contact className="size-4" />} onClick={() => navigate('/leads')}>
               Ver leads
             </Button>
-            <Button variant="primary" icon={<Radar className="size-4" />} onClick={() => navigate('/prospeccao')}>
-              Encontrar leads
+            <Button variant="primary" icon={<Users className="size-4" />} onClick={() => navigate('/clientes')}>
+              Clientes
             </Button>
           </>
         }
@@ -140,7 +139,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <Card>
           <CardHeader eyebrow="Financeiro · 6 meses" title="Receita" action={<Legend items={[{ label: 'Recebido', color: CHART.primary }, { label: 'Pendente', color: CHART.tertiary }]} />} />
           <CardBody className="h-60 pt-2">
@@ -188,7 +187,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="lg:col-span-2">
           <CardHeader eyebrow="Pipeline" title="Funil comercial" action={<Link to="/leads?view=kanban" className="text-xs text-muted hover:text-fg">Kanban →</Link>} />
           <CardBody>

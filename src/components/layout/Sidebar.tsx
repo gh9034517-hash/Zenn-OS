@@ -4,6 +4,8 @@ import { Logo, LogoMark } from '@/components/brand/Logo'
 import { useSession } from '@/context/SessionContext'
 import { useData } from '@/context/DataContext'
 import { useSpaces } from '@/context/SpacesContext'
+import { useAccess } from '@/context/AccessContext'
+import { usePrefs } from '@/context/PrefsContext'
 import { useActiveSpace, spaceHome } from '@/hooks/useActiveSpace'
 import { isEntryOverdue, localISO } from '@/services/spaceMath'
 import { cn } from '@/utils/cn'
@@ -39,6 +41,8 @@ export function Sidebar({
   const { leads } = useData()
   const { spaces, reminders } = useSpaces()
   const { key, groups } = useActiveSpace()
+  const { isAdmin } = useAccess()
+  const { prefs } = usePrefs()
   const navigate = useNavigate()
   const due = useDueCounts()
   const newLeads = leads.filter((l) => l.status === 'novo').length
@@ -47,8 +51,11 @@ export function Sidebar({
 
   const switcher: { key: string; label: string; icon: LucideIcon | 'zenn'; badge?: number }[] = [
     { key: 'geral', label: 'Visão geral', icon: Layers },
-    { key: 'zenn', label: 'Zenn Works', icon: 'zenn' },
-    ...spaces.map((s) => ({ key: s.id, label: s.name, icon: spaceIcon(s), badge: due[s.id] })),
+    ...(isAdmin && !prefs.hideZenn ? [{ key: 'zenn', label: 'Zenn Works', icon: 'zenn' as const }] : []),
+    ...spaces
+      // Escondido em Personalizar (o que está aberto agora continua aparecendo).
+      .filter((s) => !prefs.hiddenSpaces.includes(s.id) || s.id === key)
+      .map((s) => ({ key: s.id, label: s.name, icon: spaceIcon(s), badge: due[s.id] })),
   ]
 
   const badgeFor = (to: string) => {
@@ -66,7 +73,9 @@ export function Sidebar({
         isCollapsed ? 'w-[76px]' : 'w-[260px]',
       )}
     >
-      <div className={cn('flex h-16 shrink-0 items-center border-b border-line', isCollapsed ? 'justify-center px-2' : 'justify-between px-5')}>
+      <div
+        className={cn('flex h-16 shrink-0 items-center border-b border-line', isCollapsed ? 'justify-center px-2' : 'justify-between px-5')}
+      >
         <Logo collapsed={isCollapsed} />
         {!mobile && !isCollapsed && (
           <button
@@ -99,9 +108,7 @@ export function Sidebar({
                 className={cn(
                   'relative flex min-w-0 items-center gap-2.5 rounded-xl border text-left text-[13px] transition-all duration-200',
                   isCollapsed ? 'size-10 justify-center' : 'px-3 py-2',
-                  active
-                    ? 'border-white/80 bg-white text-black'
-                    : 'border-line text-muted hover:border-line-strong hover:text-fg',
+                  active ? 'border-accent bg-accent text-accent-ink' : 'border-line text-muted hover:border-line-strong hover:text-fg',
                 )}
               >
                 {Icon === 'zenn' ? (
@@ -115,7 +122,7 @@ export function Sidebar({
                     className={cn(
                       'grid min-w-4 place-items-center rounded-full px-1 font-mono text-[9px] leading-4',
                       isCollapsed ? 'absolute -top-1 -right-1' : 'ml-auto',
-                      active ? 'bg-black text-white' : 'bg-white text-black',
+                      active ? 'bg-accent-ink text-accent' : 'bg-accent text-accent-ink',
                     )}
                     title="Contas vencidas ou vencendo hoje"
                   >
@@ -159,7 +166,7 @@ export function Sidebar({
                       {({ isActive }) => (
                         <>
                           {isActive && (
-                            <span className="absolute top-1/2 left-0 h-5 w-[2px] -translate-y-1/2 rounded-full bg-white shadow-[0_0_10px_rgba(255,255,255,0.7)]" />
+                            <span className="absolute top-1/2 left-0 h-5 w-[2px] -translate-y-1/2 rounded-full bg-accent shadow-[0_0_10px_var(--color-accent)]" />
                           )}
                           <item.icon className="size-[17px] shrink-0" strokeWidth={1.6} />
                           {!isCollapsed && <span className="flex-1 truncate">{item.label}</span>}

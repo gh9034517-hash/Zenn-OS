@@ -29,7 +29,7 @@ function dayLabel(date: string) {
 }
 
 export default function SpaceEntries() {
-  const { space, words, openEntry } = useSpacePage()
+  const { space, words, openEntry, readOnly } = useSpacePage()
   const { entries, wallets, setEntryPaid } = useSpaces()
   const toast = useToast()
   const [params, setParams] = useSearchParams()
@@ -124,7 +124,7 @@ export default function SpaceEntries() {
             <Button variant="outline" icon={<Download className="size-4" />} onClick={exportRows} disabled={!filtered.length}>
               Planilha
             </Button>
-            <div className="hidden sm:block">
+            <div className={readOnly ? 'hidden' : 'hidden sm:block'}>
               <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry()}>
                 Lançar
               </Button>
@@ -199,7 +199,7 @@ export default function SpaceEntries() {
                       entry={e}
                       wallets={wallets}
                       onEdit={() => openEntry(e)}
-                      onTogglePaid={e.status === 'pendente' ? () => togglePaid(e) : undefined}
+                      onTogglePaid={e.status === 'pendente' && !readOnly ? () => togglePaid(e) : undefined}
                       busy={busyId === e.id}
                       showDate={e.status === 'pendente'}
                     />

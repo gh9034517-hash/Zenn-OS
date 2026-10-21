@@ -16,6 +16,8 @@ interface SessionContextValue {
   completeOnboarding: () => void
   signInLocal: (name: string, email: string) => void
   signInSupabase: (email: string, password: string) => Promise<void>
+  /** cria a conta; devolve true quando precisa confirmar o e-mail antes de entrar */
+  signUpSupabase: (name: string, email: string, password: string) => Promise<boolean>
   updateProfile: (patch: Partial<Pick<Session, 'name' | 'email'>>) => void
   /** Troca a senha do usuário logado (somente modo Supabase). */
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
@@ -23,6 +25,20 @@ interface SessionContextValue {
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
+
+/** As mensagens do Supabase Auth vêm em inglês: traduz as comuns. */
+function authError(e: { message?: string } | null | undefined): Error {
+  const m = e?.message ?? ''
+  if (/invalid login credentials/i.test(m)) return new Error('E-mail ou senha não conferem.')
+  if (/email not confirmed/i.test(m)) return new Error('Confirme seu e-mail pelo link que enviamos e tente de novo.')
+  if (/already registered|already been registered/i.test(m)) return new Error('Esse e-mail já tem conta. Use “Entrar”.')
+  if (/signups? not allowed|signup is disabled/i.test(m)) return new Error('O cadastro está fechado. Peça ao administrador para liberar.')
+  if (/password should be at least/i.test(m)) return new Error('A senha precisa ter pelo menos 8 caracteres.')
+  if (/rate limit|too many/i.test(m)) return new Error('Muitas tentativas seguidas. Espere um minuto e tente de novo.')
+  if (/invalid email|unable to validate email/i.test(m)) return new Error('Esse e-mail não parece certo.')
+  if (/failed to fetch|network/i.test(m)) return new Error('Sem conexão com o servidor. Confira a internet.')
+  return new Error(m || 'Não deu para entrar agora. Tente de novo.')
+}
 
 function readSession(): Session | null {
   try {
@@ -56,13 +72,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const sb = getSupabase()
       if (!sb || !integrations.supabase) throw new Error('Supabase não configurado.')
       const { data, error } = await sb.auth.signInWithPassword({ email, password })
-      if (error) throw error
+      if (error) throw authError(error)
       persist({
         name: (data.user.user_metadata?.name as string) || email.split('@')[0],
         email,
         mode: 'supabase',
         startedAt: new Date().toISOString(),
       })
+    },
+    signUpSupabase: async (name, email, password) => {
+      const sb = getSupabase()
+      if (!sb || !integrations.supabase) throw new Error('Supabase não configurado.')
+      if (password.length < 8) throw new Error('A senha precisa ter pelo menos 8 caracteres.')
+      const { data, error } = await sb.auth.signUp({ email, password, options: { data: { name: name.trim() } } })
+      if (error) throw authError(error)
+      // E-mail já cadastrado: o Supabase devolve um usuário sem identidades.
+      if (data.user && data.user.identities?.length === 0) throw new Error('Esse e-mail já tem conta. Use “Entrar”.')
+      if (!data.session) return true
+      persist({ name: name.trim() || email.split('@')[0], email, mode: 'supabase', startedAt: new Date().toISOString() })
+      return false
     },
     updateProfile: (patch) => session && persist({ ...session, ...patch }),
     changePassword: async (currentPassword, newPassword) => {

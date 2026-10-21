@@ -20,7 +20,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className={cn(
             'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-all duration-200 [&_svg]:size-3.5',
-            value === o.value ? 'bg-white text-black' : 'text-muted hover:text-fg',
+            value === o.value ? 'bg-accent text-accent-ink' : 'text-muted hover:text-fg',
           )}
         >
           {o.icon}

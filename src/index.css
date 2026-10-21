@@ -24,6 +24,11 @@
   --color-silver: #b8b8be;
   --color-danger: #d27a72;
 
+  /* Cor de destaque (Personalizar troca estes três em tempo real) */
+  --color-accent: #f4f4f2;
+  --color-accent-2: #c9c9ce;
+  --color-accent-ink: #050505;
+
   --radius-xl: 14px;
   --radius-2xl: 20px;
 
@@ -182,7 +187,7 @@
       transition-colors duration-200 hover:border-white/30 hover:text-fg;
   }
   .chip-on {
-    @apply border-white/80 bg-white text-black hover:border-white hover:text-black;
+    @apply border-accent bg-accent text-accent-ink hover:border-accent hover:text-accent-ink;
   }
 }
 
@@ -194,6 +199,13 @@
 @keyframes slide-in-left {
   from { opacity: 0; transform: translateX(-32px); }
   to { opacity: 1; transform: translateX(0); }
+}
+
+/* Personalizar → reduzir animações */
+[data-reduce-motion='1'] *, [data-reduce-motion='1'] *::before, [data-reduce-motion='1'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 /* "Ocultar valores": borra os valores (o layout não muda). */

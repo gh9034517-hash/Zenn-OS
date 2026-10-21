@@ -5,6 +5,8 @@ import './index.css'
 import App from './App'
 import { DataProvider } from '@/context/DataContext'
 import { SpacesProvider } from '@/context/SpacesContext'
+import { AccessProvider } from '@/context/AccessContext'
+import { PrefsProvider } from '@/context/PrefsContext'
 import { SessionProvider } from '@/context/SessionContext'
 import { ToastProvider } from '@/components/ui/Toast'
 
@@ -12,13 +14,17 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <HashRouter>
       <SessionProvider>
-        <DataProvider>
-          <SpacesProvider>
-            <ToastProvider>
-              <App />
-            </ToastProvider>
-          </SpacesProvider>
-        </DataProvider>
+        <PrefsProvider>
+          <AccessProvider>
+            <DataProvider>
+              <SpacesProvider>
+                <ToastProvider>
+                  <App />
+                </ToastProvider>
+              </SpacesProvider>
+            </DataProvider>
+          </AccessProvider>
+        </PrefsProvider>
       </SessionProvider>
     </HashRouter>
   </StrictMode>,

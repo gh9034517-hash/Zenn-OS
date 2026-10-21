@@ -187,6 +187,8 @@ export interface Entry extends BaseRecord {
   isTransfer: boolean
   /** "2/10" quando parcelado */
   installment: string | null
+  /** serviço (móvel, frete...) a que o lançamento pertence */
+  jobId?: string | null
 }
 
 export interface Recurring extends BaseRecord {
@@ -229,6 +231,28 @@ export interface Reminder extends BaseRecord {
   notes: string
 }
 
+export type JobKind = 'movel' | 'frete' | 'outro'
+export type JobStatus = 'orcamento' | 'aprovado' | 'andamento' | 'entregue' | 'cancelado'
+
+/** Serviço de um espaço: um móvel sob medida, um frete... do orçamento à entrega. */
+export interface Job extends BaseRecord {
+  spaceId: string
+  kind: JobKind
+  title: string
+  client: string
+  phone: string | null
+  /** endereço de entrega / destino do frete */
+  address: string
+  description: string
+  /** preço combinado com o cliente */
+  value: number
+  /** custo previsto (material, combustível...) */
+  costEstimate: number
+  deadline: string | null
+  status: JobStatus
+  notes: string
+}
+
 export interface Collections {
   leads: Lead
   clients: Client
@@ -244,6 +268,7 @@ export interface Collections {
   budgets: Budget
   goals: Goal
   reminders: Reminder
+  jobs: Job
 }
 
 export type CollectionName = keyof Collections

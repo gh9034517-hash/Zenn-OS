@@ -15,7 +15,7 @@ import {
   recurringHorizon,
   splitInstallments,
 } from '@/services/spaceMath'
-import type { Budget, CollectionName, Collections, Entry, Goal, Recurring, Reminder, Space, Wallet } from '@/types'
+import type { Budget, CollectionName, Collections, Entry, Goal, Job, Recurring, Reminder, Space, Wallet } from '@/types'
 
 interface SpacesSnapshot {
   spaces: Space[]
@@ -25,10 +25,11 @@ interface SpacesSnapshot {
   budgets: Budget[]
   goals: Goal[]
   reminders: Reminder[]
+  jobs: Job[]
 }
 
-const EMPTY: SpacesSnapshot = { spaces: [], wallets: [], entries: [], recurrings: [], budgets: [], goals: [], reminders: [] }
-const SPACE_COLLECTIONS = ['wallets', 'entries', 'recurrings', 'budgets', 'goals', 'reminders'] as const
+const EMPTY: SpacesSnapshot = { spaces: [], wallets: [], entries: [], recurrings: [], budgets: [], goals: [], reminders: [], jobs: [] }
+const SPACE_COLLECTIONS = ['wallets', 'entries', 'recurrings', 'budgets', 'goals', 'reminders', 'jobs'] as const
 
 const DEFAULT_SPACES: NewRecord<Space>[] = [
   { id: 'pessoal', name: 'Pessoal', kind: 'pessoal', position: 1 },
@@ -36,8 +37,21 @@ const DEFAULT_SPACES: NewRecord<Space>[] = [
 ]
 
 const PREFIX: Record<CollectionName, string> = {
-  leads: 'lead', clients: 'cli', projects: 'prj', tasks: 'tsk', transactions: 'trx', payments: 'pay', activities: 'act',
-  spaces: 'spc', wallets: 'wal', entries: 'ent', recurrings: 'rec', budgets: 'bud', goals: 'gol', reminders: 'rem',
+  leads: 'lead',
+  clients: 'cli',
+  projects: 'prj',
+  tasks: 'tsk',
+  transactions: 'trx',
+  payments: 'pay',
+  activities: 'act',
+  spaces: 'spc',
+  wallets: 'wal',
+  entries: 'ent',
+  recurrings: 'rec',
+  budgets: 'bud',
+  goals: 'gol',
+  reminders: 'rem',
+  jobs: 'job',
 }
 
 const insert = <K extends CollectionName>(c: K, data: NewRecord<Collections[K]>) =>
@@ -49,10 +63,23 @@ const isDuplicate = (e: unknown) => {
   return err?.code === '23505' || /duplicate key/i.test(err?.message ?? '')
 }
 
+/** O banco recusou por permissão (conta que só pode ver). */
+function friendly(e: unknown): unknown {
+  const err = e as { code?: string; message?: string }
+  if (err?.code === '42501' || /row-level security/i.test(err?.message ?? '')) {
+    return new Error('Sua conta só tem permissão para ver este espaço.')
+  }
+  return e
+}
+
 const byPosition = (a: Space, b: Space) => a.position - b.position || a.createdAt.localeCompare(b.createdAt)
 
-export interface EntryInput extends Omit<NewRecord<Entry>, 'spaceId' | 'recurringId' | 'linkId' | 'isTransfer' | 'installment' | 'paidAt'> {
+export interface EntryInput extends Omit<
+  NewRecord<Entry>,
+  'spaceId' | 'recurringId' | 'linkId' | 'isTransfer' | 'installment' | 'paidAt' | 'jobId'
+> {
   spaceId: string
+  jobId?: string | null
   /** 1 = à vista; 2+ divide o valor total em parcelas mensais */
   installments?: number
 }
@@ -104,12 +131,17 @@ interface SpacesContextValue extends SpacesSnapshot {
   createReminder: (data: NewRecord<Reminder>) => Promise<Reminder>
   updateReminder: (id: string, patch: Partial<Reminder>) => Promise<void>
   deleteReminder: (id: string) => Promise<void>
+
+  createJob: (data: NewRecord<Job>) => Promise<Job>
+  updateJob: (id: string, patch: Partial<Job>) => Promise<void>
+  /** apaga o serviço; os lançamentos ficam, só perdem o vínculo */
+  deleteJob: (id: string) => Promise<void>
 }
 
 const SpacesContext = createContext<SpacesContextValue | null>(null)
 
 async function loadSnapshot(): Promise<SpacesSnapshot> {
-  const [spaces, wallets, entries, recurrings, budgets, goals, reminders] = await Promise.all([
+  const [spaces, wallets, entries, recurrings, budgets, goals, reminders, jobs] = await Promise.all([
     provider.list('spaces'),
     provider.list('wallets'),
     provider.list('entries'),
@@ -117,6 +149,7 @@ async function loadSnapshot(): Promise<SpacesSnapshot> {
     provider.list('budgets'),
     provider.list('goals'),
     provider.list('reminders'),
+    provider.list('jobs'),
   ])
   return {
     spaces: spaces.sort(byPosition),
@@ -126,12 +159,14 @@ async function loadSnapshot(): Promise<SpacesSnapshot> {
     budgets,
     goals: goals.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     reminders: reminders.sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999')),
+    jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
   }
 }
 
-/** Primeira vez: cria Pessoal e Trabalho. */
+/** Primeira vez no modo local: cria Pessoal e Trabalho (no Supabase eles
+ *  já vêm do schema, e quem não é administrador nem pode criar espaços). */
 async function ensureDefaultSpaces(snap: SpacesSnapshot): Promise<boolean> {
-  if (snap.spaces.length) return false
+  if (provider.name !== 'local' || snap.spaces.length) return false
   for (const s of DEFAULT_SPACES) {
     try {
       await insert('spaces', s)
@@ -150,35 +185,41 @@ async function generateRecurring(snap: SpacesSnapshot): Promise<boolean> {
   for (const r of snap.recurrings) {
     const months = monthsToGenerate(r, horizon)
     if (!months.length) continue
-    for (const ym of months) {
-      const id = recurringEntryId(r.id, ym)
-      if (existing.has(id)) continue
-      try {
-        await insert('entries', {
-          id,
-          spaceId: r.spaceId,
-          type: r.type,
-          description: r.description,
-          amount: r.amount,
-          category: r.category,
-          date: dueDateFor(ym, r.day),
-          status: 'pendente',
-          paidAt: null,
-          walletId: r.walletId,
-          method: r.method,
-          counterparty: r.counterparty,
-          notes: '',
-          recurringId: r.id,
-          linkId: null,
-          isTransfer: false,
-          installment: null,
-        })
-      } catch (e) {
-        if (!isDuplicate(e)) throw e
+    try {
+      for (const ym of months) {
+        const id = recurringEntryId(r.id, ym)
+        if (existing.has(id)) continue
+        try {
+          await insert('entries', {
+            id,
+            spaceId: r.spaceId,
+            type: r.type,
+            description: r.description,
+            amount: r.amount,
+            category: r.category,
+            date: dueDateFor(ym, r.day),
+            status: 'pendente',
+            paidAt: null,
+            walletId: r.walletId,
+            method: r.method,
+            counterparty: r.counterparty,
+            notes: '',
+            recurringId: r.id,
+            linkId: null,
+            isTransfer: false,
+            installment: null,
+            jobId: null,
+          })
+        } catch (e) {
+          if (!isDuplicate(e)) throw e
+        }
       }
+      await provider.update('recurrings', r.id, { lastGenerated: months[months.length - 1] })
+      changed = true
+    } catch (e) {
+      // Conta que só vê o espaço: quem lança as fixas é o dono.
+      if (friendly(e) === e) throw e
     }
-    await provider.update('recurrings', r.id, { lastGenerated: months[months.length - 1] })
-    changed = true
   }
   return changed
 }
@@ -262,14 +303,17 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
     const withRefresh =
       <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
       async (...args: A) => {
-        const result = await fn(...args)
-        await refresh()
-        return result
+        try {
+          const result = await fn(...args)
+          await refresh()
+          return result
+        } catch (e) {
+          throw friendly(e)
+        }
       }
 
     const entriesNow = async () => provider.list('entries')
-    const paidAtFor = (status: Entry['status'], date: string) =>
-      status === 'pago' ? new Date(`${date}T12:00:00`).toISOString() : null
+    const paidAtFor = (status: Entry['status'], date: string) => (status === 'pago' ? new Date(`${date}T12:00:00`).toISOString() : null)
 
     const pendingFromToday = async (recurringId: string) => {
       const today = localISO()
@@ -279,12 +323,13 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
     /** Pares (transferência / meu pagamento) andam juntos; parcelas não. */
     const isPair = (linkId: string | null) => !!linkId && linkId.startsWith('lnk_')
 
-    const createEntryRaw = async ({ installments = 1, ...data }: EntryInput) => {
+    const createEntryRaw = async ({ installments = 1, jobId = null, ...data }: EntryInput) => {
       const n = Math.max(1, Math.min(Math.floor(installments), 48))
       if (n === 1) {
         return [
           await insert('entries', {
             ...data,
+            jobId,
             paidAt: paidAtFor(data.status, data.date),
             recurringId: null,
             linkId: null,
@@ -303,6 +348,7 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
         created.push(
           await insert('entries', {
             ...data,
+            jobId,
             amount: amounts[i],
             date,
             status,
@@ -358,6 +404,7 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
         linkId,
         isTransfer: !t.countsAsResult,
         installment: null,
+        jobId: null,
         description: t.description,
       }
       await insert('entries', { ...base, spaceId: t.from.spaceId, walletId: t.from.walletId, category: t.from.category, type: 'despesa' })
@@ -463,6 +510,15 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
         await provider.update('reminders', id, patch)
       }),
       deleteReminder: withRefresh((id: string) => provider.remove('reminders', id)),
+
+      createJob: withRefresh((data: NewRecord<Job>) => insert('jobs', data)),
+      updateJob: withRefresh(async (id: string, patch: Partial<Job>) => {
+        await provider.update('jobs', id, patch)
+      }),
+      deleteJob: withRefresh(async (id: string) => {
+        for (const e of (await entriesNow()).filter((e) => e.jobId === id)) await provider.update('entries', e.id, { jobId: null })
+        await provider.remove('jobs', id)
+      }),
     }
   }, [snap, loading, error, refresh])
 

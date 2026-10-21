@@ -46,7 +46,7 @@ function Delta({ now, before, invert }: { now: number; before: number; invert?: 
 }
 
 export default function SpaceHome() {
-  const { space, words, openEntry, openTransfer } = useSpacePage()
+  const { space, words, openEntry, openTransfer, readOnly } = useSpacePage()
   const { spaces, wallets, entries, recurrings, budgets, goals, reminders, setEntryPaid, updateReminder } = useSpaces()
   const toast = useToast()
   const [hidden] = useHideValues()
@@ -104,12 +104,12 @@ export default function SpaceHome() {
         actions={
           <>
             <MonthPicker value={ym} onChange={setYm} />
-            {hasOther && (
+            {hasOther && !readOnly && (
               <Button variant="outline" icon={<HandCoins className="size-4" />} onClick={() => openTransfer('espacos')}>
                 Meu pagamento
               </Button>
             )}
-            <div className="hidden sm:block">
+            <div className={readOnly ? 'hidden' : 'hidden sm:block'}>
               <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry()}>
                 Lançar
               </Button>
@@ -227,7 +227,7 @@ export default function SpaceHome() {
         )}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-5">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="overflow-hidden lg:col-span-3">
           <CardHeader
             eyebrow="Próximos 7 dias"
@@ -246,7 +246,7 @@ export default function SpaceHome() {
                   entry={e}
                   wallets={wallets}
                   onEdit={() => openEntry(e)}
-                  onTogglePaid={() => togglePaid(e.id, e.status === 'pendente')}
+                  onTogglePaid={readOnly ? undefined : () => togglePaid(e.id, e.status === 'pendente')}
                   busy={busyId === e.id}
                 />
               ))}
@@ -295,7 +295,7 @@ export default function SpaceHome() {
         </CardBody>
       </Card>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader
             eyebrow="Orçamento"

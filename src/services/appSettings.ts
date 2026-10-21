@@ -1,10 +1,9 @@
-// Configurações persistidas (ex.: chave do Google Places).
+// Configurações persistidas da conta.
 // Em modo Supabase: tabela app_settings. Em modo local: localStorage.
 import { getSupabase } from '@/lib/supabase'
 import { integrations } from '@/lib/env'
 
 const LOCAL_PREFIX = 'zenn-os:setting:'
-export const GOOGLE_KEY = 'google_maps_api_key'
 
 export async function getSetting(key: string): Promise<string | null> {
   const sb = getSupabase()
@@ -36,10 +35,4 @@ export async function setSetting(key: string, value: string | null): Promise<voi
   } catch {
     /* indisponível */
   }
-}
-
-/** True quando existe chave do Google configurada (real search disponível). */
-export async function isGoogleKeyConfigured(): Promise<boolean> {
-  const v = await getSetting(GOOGLE_KEY)
-  return Boolean(v && v.trim())
 }

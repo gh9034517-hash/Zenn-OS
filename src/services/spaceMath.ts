@@ -1,6 +1,6 @@
 // Cálculos dos espaços (Pessoal, Trabalho...). Funções puras: recebem os
 // registros e devolvem números — nada aqui lê ou grava no banco.
-import type { Entry, Recurring, SpaceKind, TransactionType, Wallet } from '@/types'
+import type { Entry, Job, JobKind, JobStatus, Recurring, SpaceKind, TransactionType, Wallet } from '@/types'
 
 // ------------------------------------------------------------
 // Datas (sempre no fuso do aparelho, não em UTC)
@@ -159,18 +159,22 @@ export function parseMoney(input: string): number {
 // ------------------------------------------------------------
 export const DEFAULT_CATEGORIES: Record<SpaceKind, Record<TransactionType, string[]>> = {
   empresa: {
-    receita: ['Vendas', 'Serviços', 'Recebimento de cliente', 'Outras receitas'],
+    receita: ['Móveis sob medida', 'Fretes', 'Serviços', 'Vendas', 'Outras receitas'],
     despesa: [
-      'Fornecedores / mercadoria',
+      'Chapas e madeira',
+      'Ferragens e acessórios',
+      'Fita de borda e cola',
+      'Combustível',
+      'Manutenção do veículo',
+      'Ajudante / diárias',
+      'Ferramentas e máquinas',
       'Aluguel',
       'Água, luz e internet',
       'Salários',
       'Impostos e taxas',
-      'Manutenção',
-      'Combustível e transporte',
-      'Marketing',
+      'Fornecedores / mercadoria',
       'Tarifas bancárias',
-      'Equipamentos',
+      'Marketing',
       'Outras despesas',
     ],
   },
@@ -201,4 +205,58 @@ export function spaceWords(kind: SpaceKind) {
   return kind === 'empresa'
     ? { in: 'Receita', ins: 'Receitas', out: 'Despesa', outs: 'Despesas', result: 'Lucro', counterparty: 'Fornecedor ou cliente' }
     : { in: 'Entrada', ins: 'Entradas', out: 'Gasto', outs: 'Gastos', result: 'Sobra', counterparty: 'Quem / onde' }
+}
+
+// ------------------------------------------------------------
+// Serviços (móveis, fretes...)
+// ------------------------------------------------------------
+export const JOB_KIND_LABEL: Record<JobKind, string> = { movel: 'Móvel', frete: 'Frete', outro: 'Outro serviço' }
+
+/** Etapas na ordem; "andamento" muda de nome conforme o tipo. */
+export const JOB_FLOW: JobStatus[] = ['orcamento', 'aprovado', 'andamento', 'entregue']
+
+export function jobStatusLabel(status: JobStatus, kind: JobKind): string {
+  switch (status) {
+    case 'orcamento':
+      return 'Orçamento'
+    case 'aprovado':
+      return 'Aprovado'
+    case 'andamento':
+      return kind === 'frete' ? 'Agendado' : 'Em produção'
+    case 'entregue':
+      return 'Entregue'
+    case 'cancelado':
+      return 'Cancelado'
+  }
+}
+
+/** Próxima etapa (null quando já entregue ou cancelado). */
+export function nextJobStatus(status: JobStatus): JobStatus | null {
+  const i = JOB_FLOW.indexOf(status)
+  return i >= 0 && i < JOB_FLOW.length - 1 ? JOB_FLOW[i + 1] : null
+}
+
+/** Dinheiro de um serviço, a partir dos lançamentos ligados a ele. */
+export function jobFinance(job: Pick<Job, 'id' | 'value' | 'costEstimate'>, entries: Entry[]) {
+  const mine = entries.filter((e) => e.jobId === job.id && !e.isTransfer)
+  const sumOf = (rows: Entry[]) => Math.round(rows.reduce((a, e) => a + Number(e.amount), 0) * 100) / 100
+  const received = sumOf(mine.filter((e) => e.type === 'receita' && e.status === 'pago'))
+  const toReceive = sumOf(mine.filter((e) => e.type === 'receita' && e.status === 'pendente'))
+  const costs = sumOf(mine.filter((e) => e.type === 'despesa'))
+  const value = Number(job.value)
+  // Sem custo lançado ainda, usa o custo previsto para estimar o lucro.
+  const costBasis = costs > 0 ? costs : Number(job.costEstimate)
+  return {
+    value,
+    received,
+    toReceive,
+    /** quanto do preço combinado ainda nem foi lançado como "a receber" */
+    notCharged: Math.max(0, Math.round((value - received - toReceive) * 100) / 100),
+    costs,
+    costIsEstimate: costs === 0 && Number(job.costEstimate) > 0,
+    profit: Math.round((value - costBasis) * 100) / 100,
+    margin: value > 0 ? (value - costBasis) / value : 0,
+    paidRatio: value > 0 ? Math.min(1, received / value) : 0,
+    entries: mine,
+  }
 }

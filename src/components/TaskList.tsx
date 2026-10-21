@@ -33,7 +33,7 @@ export function TaskList({ tasks, showProject }: { tasks: Task[]; showProject?: 
                 }}
                 className={cn(
                   'mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border transition-all',
-                  done ? 'border-white bg-white text-black' : 'border-line-strong hover:border-white/60',
+                  done ? 'border-accent bg-accent text-accent-ink' : 'border-line-strong hover:border-white/60',
                 )}
                 aria-label={done ? 'Reabrir tarefa' : 'Concluir tarefa'}
               >

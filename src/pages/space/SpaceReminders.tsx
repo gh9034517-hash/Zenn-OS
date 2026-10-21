@@ -49,7 +49,7 @@ export default function SpaceReminders() {
           onClick={() => void updateReminder(r.id, { done: !r.done })}
           className={cn(
             'grid size-6 shrink-0 place-items-center rounded-lg border transition',
-            r.done ? 'border-white bg-white text-black' : 'border-line-strong text-transparent hover:border-white hover:text-fg',
+            r.done ? 'border-accent bg-accent text-accent-ink' : 'border-line-strong text-transparent hover:border-white hover:text-fg',
           )}
           aria-label={r.done ? `Reabrir ${r.title}` : `Concluir ${r.title}`}
         >

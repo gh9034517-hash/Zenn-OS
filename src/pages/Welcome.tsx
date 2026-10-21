@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Radar, Users, Briefcase, Wallet } from 'lucide-react'
+import { ArrowRight, Briefcase, Calculator, Layers, Wallet } from 'lucide-react'
 import { Mascot } from '@/components/brand/Mascot'
 import { Logo } from '@/components/brand/Logo'
 import { OrbitBackdrop } from '@/components/brand/OrbitBackdrop'
@@ -10,13 +10,13 @@ import { cn } from '@/utils/cn'
 
 const STEPS = [
   {
-    icon: Radar,
-    title: 'Prospecção',
-    text: 'Encontre empresas por nicho e cidade. Destaque imediato para quem ainda não tem site.',
+    icon: Layers,
+    title: 'Espaços',
+    text: 'Trabalho, pessoal e Zenn Works separados. O dinheiro de um nunca se mistura com o do outro.',
   },
-  { icon: Users, title: 'CRM', text: 'Leads em tabela ou kanban, do primeiro contato até virar cliente.' },
-  { icon: Briefcase, title: 'Projetos', text: 'Projetos vinculados aos clientes, tarefas e progresso automático.' },
-  { icon: Wallet, title: 'Financeiro', text: 'Receitas, pagamentos, pendências e lucro — tudo sincronizado.' },
+  { icon: Wallet, title: 'Contas e lucro', text: 'Contas a pagar, contas fixas, carteiras e o lucro de cada mês, sem planilha.' },
+  { icon: Calculator, title: 'Calculadoras', text: 'Porcentagem, orçamento de móvel, preço de frete, chapas e maquininha.' },
+  { icon: Briefcase, title: 'Serviços', text: 'Do orçamento à entrega: móveis, fretes e quanto cada um deu de lucro.' },
 ]
 
 export default function Welcome() {
@@ -26,7 +26,7 @@ export default function Welcome() {
 
   const finish = () => {
     completeOnboarding()
-    navigate(session ? '/geral' : '/login')
+    navigate(session ? '/inicio' : '/login')
   }
 
   return (

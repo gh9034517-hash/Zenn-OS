@@ -10,8 +10,7 @@ import { ChartTooltip, Legend } from '@/components/charts/ChartTooltip'
 import { CHART, axisProps } from '@/components/charts/theme'
 import { useData } from '@/context/DataContext'
 import { useMetrics } from '@/hooks/useMetrics'
-import { hasNoWebsite } from '@/services/googlePlaces'
-import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent } from '@/utils/format'
+import { formatCurrency, formatCurrencyCompact, formatNumber, formatPercent, hasNoWebsite } from '@/utils/format'
 
 function groupCount<T>(rows: T[], key: (r: T) => string) {
   const map = new Map<string, { total: number; semSite: number }>()
@@ -78,7 +77,7 @@ export default function Analytics() {
         ))}
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader eyebrow="Prospecção" title="Leads por mês" action={<Legend items={[{ label: 'Leads', color: CHART.primary }, { label: 'Sem site', color: CHART.secondary, dashed: true }, { label: 'Novos clientes', color: CHART.tertiary }]} />} />
           <CardBody className="h-64 pt-2">

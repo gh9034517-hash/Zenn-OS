@@ -46,26 +46,42 @@ export function MoneyInput({
 
 const LAST_WALLET = 'zenn-os:last-wallet:'
 
+/** Valores para abrir o formulário já preenchido (ex.: receber de um serviço). */
+export interface EntryPreset {
+  type?: TransactionType
+  amount?: number
+  description?: string
+  category?: string
+  counterparty?: string
+  status?: TransactionStatus
+  date?: string
+  jobId?: string | null
+}
+
 export function EntryFormModal({
   open,
   onClose,
   space,
   entry,
-  defaultType = 'despesa',
+  preset,
+  readOnly,
 }: {
   open: boolean
   onClose: () => void
   space: Space
   /** editar um lançamento existente */
   entry?: Entry | null
-  defaultType?: TransactionType
+  /** novo lançamento já preenchido */
+  preset?: EntryPreset
+  /** conta que só pode ver: mostra, mas não salva */
+  readOnly?: boolean
 }) {
-  const { wallets, entries, createEntry, updateEntry, deleteEntry } = useSpaces()
+  const { wallets, entries, jobs, createEntry, updateEntry, deleteEntry } = useSpaces()
   const toast = useToast()
   const words = spaceWords(space.kind)
   const listId = useId()
   const spaceWallets = wallets.filter((w) => w.spaceId === space.id && !w.archived)
-  const [type, setType] = useState<TransactionType>(defaultType)
+  const [type, setType] = useState<TransactionType>(preset?.type ?? 'despesa')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
@@ -89,20 +105,21 @@ export function EntryFormModal({
       /* armazenamento indisponível */
     }
     const fallbackWallet = spaceWallets.some((w) => w.id === lastWallet) ? lastWallet : (spaceWallets[0]?.id ?? '')
-    setType(entry?.type ?? defaultType)
-    setAmount(entry ? String(entry.amount).replace('.', ',') : '')
-    setDescription(entry?.description ?? '')
-    setCategory(entry?.category ?? '')
-    setDate(entry?.date ?? localISO())
-    setStatus(entry?.status ?? 'pago')
+    const amountOf = (n: number | undefined) => (n ? String(n).replace('.', ',') : '')
+    setType(entry?.type ?? preset?.type ?? 'despesa')
+    setAmount(entry ? amountOf(entry.amount) : amountOf(preset?.amount))
+    setDescription(entry?.description ?? preset?.description ?? '')
+    setCategory(entry?.category ?? preset?.category ?? '')
+    setDate(entry?.date ?? preset?.date ?? localISO())
+    setStatus(entry?.status ?? preset?.status ?? 'pago')
     setWalletId(entry ? (entry.walletId ?? '') : fallbackWallet)
     setMethod(entry?.method ?? 'pix')
-    setCounterparty(entry?.counterparty ?? '')
+    setCounterparty(entry?.counterparty ?? preset?.counterparty ?? '')
     setNotes(entry?.notes ?? '')
     setInstallments(1)
     setMore(!!(entry && (entry.counterparty || entry.notes)))
     setConfirmDelete(false)
-  }, [open, entry, defaultType, space.id]) // carteiras de propósito fora: não resetar o formulário no meio
+  }, [open, entry, preset, space.id]) // carteiras de propósito fora: não resetar o formulário no meio
 
   const suggestions = useMemo(
     () => categorySuggestions(space.kind, type, entries.filter((e) => e.spaceId === space.id)),
@@ -148,7 +165,7 @@ export function EntryFormModal({
         })
         toast.success('Lançamento atualizado', data.description)
       } else {
-        const created = await createEntry({ ...data, spaceId: space.id, installments })
+        const created = await createEntry({ ...data, spaceId: space.id, installments, jobId: preset?.jobId ?? null })
         toast.success(
           created.length > 1 ? `${created.length} parcelas lançadas` : `${isIn ? words.in : words.out} lançada`,
           `${data.description} · ${formatCurrency(value)}`,
@@ -176,6 +193,8 @@ export function EntryFormModal({
     }
   }
 
+  const jobId = entry ? entry.jobId : preset?.jobId
+  const job = jobId ? jobs.find((j) => j.id === jobId) : undefined
   const isGroup = !!entry?.linkId?.startsWith('parc_')
   const isPair = !!entry?.linkId?.startsWith('lnk_')
 
@@ -204,6 +223,12 @@ export function EntryFormModal({
         </div>
       ) : (
         <form onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {job && (
+            <p className="rounded-xl border border-line bg-white/[0.03] px-3 py-2 text-xs text-muted sm:col-span-2">
+              Serviço: <span className="text-fg">{job.title}</span>
+              {job.client && ` · ${job.client}`}
+            </p>
+          )}
           <div className="sm:col-span-2">
             <Segmented<TransactionType>
               value={type}
@@ -323,7 +348,7 @@ export function EntryFormModal({
           )}
 
           <div className="flex items-center gap-2 border-t border-line pt-4 sm:col-span-2">
-            {entry && (
+            {entry && !readOnly && (
               <Button variant="ghost" icon={<Trash2 className="size-4" />} onClick={() => setConfirmDelete(true)} aria-label="Apagar">
                 <span className="hidden sm:inline">Apagar</span>
               </Button>
@@ -332,9 +357,11 @@ export function EntryFormModal({
               <Button variant="ghost" onClick={onClose}>
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary" loading={busy}>
-                {entry ? 'Salvar' : 'Lançar'}
-              </Button>
+              {!readOnly && (
+                <Button type="submit" variant="primary" loading={busy}>
+                  {entry ? 'Salvar' : 'Lançar'}
+                </Button>
+              )}
             </div>
           </div>
         </form>

@@ -1,6 +1,6 @@
+import { hasNoWebsite } from '@/utils/format'
 import { GlobeLock, Globe } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
-import { hasNoWebsite } from '@/services/googlePlaces'
 import type { LeadStatus } from '@/types'
 import { LEAD_STATUS_LABEL } from '@/data/constants'
 

@@ -31,6 +31,23 @@ dá para renomear e criar outros em Configurações → Espaços). Cada espaço 
 - **Relatório**: lucro por categoria, mês ou ano, comparação com o período anterior, PDF
 - **Lembretes**
 - **Meu pagamento**: vira despesa no Trabalho e entrada no Pessoal de uma vez
+- **Serviços** (espaços de empresa): móveis e fretes do orçamento à entrega — sinal, pagamento, custos e lucro de cada um
+
+## Calculadoras
+
+Porcentagem (inclusive preço pela margem real), gastos por dia/semana/mês/ano, orçamento de móvel
+(material, mão de obra, custos da oficina, imposto e lucro), frete (km, diesel, desgaste, pedágio, ajudante,
+preço por chapa), quantas chapas um projeto usa (com perda e fita de borda), maquininha e parcelado × à vista.
+O preço do móvel ou do frete vira um serviço com um toque. Contas em `src/services/calcMath.ts`.
+
+## Personalizar e acessos
+
+- **Personalizar**: nome do sistema, cor de destaque (metálicas), tamanho da letra, página inicial e o que aparece
+  no menu. Fica salvo na conta (Supabase `user_metadata.prefs`) e no aparelho.
+- **Acessos** (Configurações, só o administrador): a pessoa cria a conta em “Criar conta” e o administrador libera
+  um espaço para ela — “ver e lançar” ou “só ver”. É assim que o sistema cresce para mais clientes: um espaço por
+  cliente, cada um vendo só o seu. Regras no banco: `space_members`, `can_read_space`, `can_write_space`,
+  `grant_space_access` (supabase/schema.sql). O cadastro público do Supabase Auth precisa estar ligado.
 
 O olho no topo oculta todos os valores da tela. O site pode ser instalado no celular (Adicionar à tela inicial).
 As tabelas ficam em `supabase/schema.sql` (seção "Espaços") com o mesmo controle de acesso por `app_members`.
@@ -41,11 +58,9 @@ Copie `.env.example` para `.env.local` e preencha. Sem as variáveis, cada integ
 
 | Integração | Variáveis | Sem configuração |
 |---|---|---|
-| Google Places API (New) | `GOOGLE_MAPS_API_KEY` | Busca usa o OpenStreetMap (gratuito) |
 | Supabase | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `VITE_DATA_PROVIDER=supabase` | Dados no `localStorage` |
 | Meta Graph API | `META_ACCESS_TOKEN`, `META_APP_ID`, `META_GRAPH_VERSION` | O enriquecimento de lead retorna dados DEMO |
 
-- **Google Places:** restrinja a chave por HTTP referrer e habilite só a "Places API (New)".
 - **Supabase:** rode `supabase/schema.sql` no SQL Editor. O login passa a usar o Supabase Auth.
 - **Meta:** usa apenas endpoints oficiais da Graph API, sem scraping. Consultar páginas públicas exige o recurso *Page Public Metadata Access*.
 

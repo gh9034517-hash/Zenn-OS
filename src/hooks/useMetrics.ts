@@ -1,9 +1,8 @@
 import { useMemo } from 'react'
 import { useData } from '@/context/DataContext'
 import { activeProjects, financeSummary, leadFunnel } from '@/utils/metrics'
-import { lastMonths, monthKey, monthLabel } from '@/utils/format'
+import { lastMonths, monthKey, monthLabel, hasNoWebsite } from '@/utils/format'
 import { PROJECT_STATUSES } from '@/data/constants'
-import { hasNoWebsite } from '@/services/googlePlaces'
 
 /** Métricas consolidadas para Dashboard e Analytics. */
 export function useMetrics(months = 6) {

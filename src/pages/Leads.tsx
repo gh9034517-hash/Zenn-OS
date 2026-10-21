@@ -16,10 +16,9 @@ import { LeadStatusBadge, Rating, WebsiteBadge } from '@/components/leads/LeadBa
 import { useData } from '@/context/DataContext'
 import { useLeadWorkflow } from '@/hooks/useLeadWorkflow'
 import { LEAD_STATUSES, LEAD_STATUS_LABEL } from '@/data/constants'
-import { hasNoWebsite } from '@/services/googlePlaces'
 import type { Lead, LeadStatus } from '@/types'
 import { exportCsv } from '@/utils/csv'
-import { formatDate, formatRelative, normalize } from '@/utils/format'
+import { formatDate, formatRelative, normalize, hasNoWebsite } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
 type View = 'table' | 'kanban'
@@ -149,7 +148,7 @@ export default function Leads() {
 
       {leads.length === 0 ? (
         <Card>
-          <EmptyState title="Nenhum lead ainda" description="Use Encontrar Leads para prospectar ou cadastre manualmente." action={<Button variant="primary" onClick={() => setCreating(true)}>Novo lead</Button>} />
+          <EmptyState title="Nenhum lead ainda" description="Cadastre os contatos que podem virar clientes." action={<Button variant="primary" onClick={() => setCreating(true)}>Novo lead</Button>} />
         </Card>
       ) : view === 'kanban' ? (
         <Kanban

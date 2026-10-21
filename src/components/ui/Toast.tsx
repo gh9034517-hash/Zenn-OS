@@ -38,7 +38,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <span
                   className={cn(
                     'mt-0.5 grid size-5 shrink-0 place-items-center rounded-full',
-                    t.kind === 'error' ? 'bg-danger/15 text-danger' : 'bg-white text-black',
+                    t.kind === 'error' ? 'bg-danger/15 text-danger' : 'bg-accent text-accent-ink',
                   )}
                 >
                   <Icon className="size-3" strokeWidth={3} />

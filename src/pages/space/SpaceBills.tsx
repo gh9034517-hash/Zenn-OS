@@ -15,7 +15,7 @@ import { cn } from '@/utils/cn'
 import type { Entry, TransactionType } from '@/types'
 
 export default function SpaceBills() {
-  const { space, openEntry } = useSpacePage()
+  const { space, openEntry, readOnly } = useSpacePage()
   const { entries, wallets, setEntryPaid } = useSpaces()
   const toast = useToast()
   const navigate = useNavigate()
@@ -75,8 +75,8 @@ export default function SpaceBills() {
                 { value: 'receita', label: 'A receber' },
               ]}
             />
-            <div className="hidden sm:block">
-              <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry(null, type)}>
+            <div className={readOnly ? 'hidden' : 'hidden sm:block'}>
+              <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry(null, { type })}>
                 Nova conta
               </Button>
             </div>
@@ -123,7 +123,7 @@ export default function SpaceBills() {
             <Button variant="outline" icon={<Repeat className="size-4" />} onClick={() => navigate(`/e/${space.id}/fixas`)}>
               Contas fixas
             </Button>
-            <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry(null, type)}>
+            <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => openEntry(null, { type })}>
               {isIn ? 'Algo a receber' : 'Conta a pagar'}
             </Button>
           </div>
@@ -140,7 +140,7 @@ export default function SpaceBills() {
                 </div>
                 <ul className="divide-y divide-line">
                   {s.rows.map((e) => (
-                    <EntryRow key={e.id} entry={e} wallets={wallets} onEdit={() => openEntry(e)} onTogglePaid={() => toggle(e)} busy={busyId === e.id} />
+                    <EntryRow key={e.id} entry={e} wallets={wallets} onEdit={() => openEntry(e)} onTogglePaid={readOnly ? undefined : () => toggle(e)} busy={busyId === e.id} />
                   ))}
                 </ul>
               </Card>
@@ -160,7 +160,7 @@ export default function SpaceBills() {
             <Card className="mt-3 overflow-hidden">
               <ul className="divide-y divide-line">
                 {recentlyPaid.map((e) => (
-                  <EntryRow key={e.id} entry={e} wallets={wallets} onEdit={() => openEntry(e)} onTogglePaid={() => toggle(e)} busy={busyId === e.id} />
+                  <EntryRow key={e.id} entry={e} wallets={wallets} onEdit={() => openEntry(e)} onTogglePaid={readOnly ? undefined : () => toggle(e)} busy={busyId === e.id} />
                 ))}
               </ul>
             </Card>

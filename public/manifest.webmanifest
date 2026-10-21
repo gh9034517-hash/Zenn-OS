@@ -3,7 +3,7 @@
   "short_name": "Zenn OS",
   "description": "Zenn Works, trabalho e finanças pessoais num lugar só.",
   "id": "./",
-  "start_url": "./#/geral",
+  "start_url": "./#/inicio",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",

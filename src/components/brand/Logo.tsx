@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { usePrefs } from '@/context/PrefsContext'
 import { cn } from '@/utils/cn'
 
 export function LogoMark({ className }: { className?: string }) {
@@ -20,13 +21,21 @@ export function LogoMark({ className }: { className?: string }) {
 }
 
 export function Logo({ collapsed, className }: { collapsed?: boolean; className?: string }) {
+  const { prefs } = usePrefs()
   return (
-    <div className={cn('flex items-center gap-3', className)}>
-      <LogoMark />
+    <div className={cn('flex min-w-0 items-center gap-3', className)}>
+      <LogoMark className="shrink-0" />
       {!collapsed && (
-        <div className="leading-none">
-          <p className="text-metal font-display text-[13px] font-bold tracking-[0.32em]">ZENN OS</p>
-          <p className="mt-1 text-[10px] tracking-[0.2em] text-faint uppercase">Zenn Works</p>
+        <div className="min-w-0 leading-none">
+          <p
+            className={cn(
+              'text-metal truncate font-display text-[13px] font-bold uppercase',
+              (prefs.appName || 'ZENN OS').length > 9 ? 'tracking-[0.12em]' : 'tracking-[0.32em]',
+            )}
+          >
+            {prefs.appName || 'ZENN OS'}
+          </p>
+          {prefs.appTagline && <p className="mt-1 truncate text-[10px] tracking-[0.2em] text-faint uppercase">{prefs.appTagline}</p>}
         </div>
       )}
     </div>

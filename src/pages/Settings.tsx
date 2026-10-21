@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Download, MapPinned, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed, KeyRound, ExternalLink } from 'lucide-react'
+import { Database, Download, Trash2, Upload, Sparkles, CheckCircle2, CircleDashed } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -12,12 +12,13 @@ import { Mascot } from '@/components/brand/Mascot'
 import { useData } from '@/context/DataContext'
 import { useSpaces } from '@/context/SpacesContext'
 import { SpacesSettingsCard } from '@/components/space/SpacesSettingsCard'
+import { AccessSettingsCard } from '@/components/space/AccessSettingsCard'
+import { useAccess } from '@/context/AccessContext'
 import { useSession } from '@/context/SessionContext'
 import { useToast } from '@/components/ui/Toast'
 import { integrations, env } from '@/lib/env'
 import { importSnapshot, provider, type Snapshot } from '@/services/database'
 import { downloadFile } from '@/utils/csv'
-import { GOOGLE_KEY, getSetting, setSetting } from '@/services/appSettings'
 
 function PasswordCard() {
   const toast = useToast()
@@ -29,8 +30,7 @@ function PasswordCard() {
 
   const tooShort = next.length > 0 && next.length < 8
   const mismatch = confirm.length > 0 && next !== confirm
-  const canSave =
-    !!currentPassword && next.length >= 8 && next === confirm && !busy && integrations.supabase
+  const canSave = !!currentPassword && next.length >= 8 && next === confirm && !busy && integrations.supabase
 
   const save = async () => {
     setBusy(true)
@@ -53,8 +53,7 @@ function PasswordCard() {
       <CardBody className="space-y-4">
         <p className="text-sm text-muted">
           Troque a senha de acesso ao Zenn OS. Ela é verificada e guardada pelo
-          <span className="text-fg"> Supabase Auth</span> (criptografada) — o sistema nunca salva sua senha no
-          navegador nem no código.
+          <span className="text-fg"> Supabase Auth</span> (criptografada) — o sistema nunca salva sua senha no navegador nem no código.
         </p>
         {!integrations.supabase && (
           <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
@@ -99,130 +98,43 @@ function PasswordCard() {
   )
 }
 
-function GoogleKeyCard() {
-  const toast = useToast()
-  const [current, setCurrent] = useState<string | null>(null)
-  const [value, setValue] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [busy, setBusy] = useState(false)
-
-  const load = () => {
-    setLoading(true)
-    getSetting(GOOGLE_KEY)
-      .then(setCurrent)
-      .finally(() => setLoading(false))
-  }
-  useEffect(load, [])
-
-  const masked = current ? `${current.slice(0, 6)}••••••••${current.slice(-4)}` : null
-
-  const save = async () => {
-    setBusy(true)
-    try {
-      await setSetting(GOOGLE_KEY, value.trim())
-      toast.success('Chave do Google salva', 'A busca de leads agora é real.')
-      setValue('')
-      load()
-    } catch (e) {
-      toast.error('Não foi possível salvar', e instanceof Error ? e.message : undefined)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const remove = async () => {
-    setBusy(true)
-    try {
-      await setSetting(GOOGLE_KEY, null)
-      toast.info('Chave removida', 'A busca volta para o modo DEMO.')
-      load()
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <Card className="lg:col-span-2">
-      <CardHeader
-        eyebrow="Prospecção · opcional"
-        title="Google Places (opcional)"
-        action={
-          loading ? null : current ? (
-            <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>Google ativo</Badge>
-          ) : (
-            <Badge tone="default" icon={<CheckCircle2 className="size-3" />}>Grátis (OpenStreetMap)</Badge>
-          )
-        }
-      />
-      <CardBody className="space-y-4">
-        <p className="text-sm text-muted">
-          A busca de leads já funciona <span className="text-fg">de graça</span>, com empresas reais do
-          <span className="text-fg"> OpenStreetMap</span> — sem chave nem cartão. A limitação é o telefone: no mapa
-          gratuito, <span className="text-fg">cerca de 1 em cada 3 empresas</span> tem número cadastrado (as demais
-          têm o atalho "ver no Google"). O Google Maps traz o <span className="text-fg">telefone oficial de quase
-          todas</span>, além de nota e avaliações. Tem cota gratuita mensal, mas exige cartão no Google Cloud. A chave
-          fica no seu Supabase e é usada por uma função no servidor —{' '}
-          <span className="text-fg">nunca fica exposta no navegador</span>.
-        </p>
-        {!integrations.supabase && (
-          <p className="rounded-xl border border-dashed border-white/25 px-3 py-2 text-xs text-muted">
-            A chave do Google é guardada no Supabase. Neste modo local (sem Supabase), a busca fica em DEMO.
-          </p>
-        )}
-        {masked && (
-          <p className="flex items-center gap-2 text-sm">
-            <KeyRound className="size-4 text-faint" />
-            <code className="font-mono text-xs text-fg-soft">{masked}</code>
-          </p>
-        )}
-        <FormField label={current ? 'Substituir chave' : 'Chave da API'}>
-          <Input
-            type="password"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="AIza…"
-            disabled={!integrations.supabase}
-          />
-        </FormField>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="primary" loading={busy} disabled={!value.trim() || !integrations.supabase} onClick={save}>
-            Salvar chave
-          </Button>
-          {current && (
-            <Button variant="danger" loading={busy} onClick={remove}>
-              Remover
-            </Button>
-          )}
-          <a
-            href="https://console.cloud.google.com/google/maps-apis/credentials"
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto inline-flex items-center gap-1 text-xs text-muted hover:text-fg"
-          >
-            Gerar uma chave <ExternalLink className="size-3" />
-          </a>
-        </div>
-        <p className="text-xs text-faint">
-          Segurança: em “Restrições de API” permita só a “Places API (New)”. Não use restrição por site (referenciador HTTP) — a chave roda no servidor e seria recusada. Para nunca pagar, limite a cota diária no Google Cloud.
-        </p>
-      </CardBody>
-    </Card>
-  )
-}
-
-function IntegrationRow({ icon, name, configured, detail, envVars }: { icon: React.ReactNode; name: string; configured: boolean; detail: string; envVars: string[] }) {
+function IntegrationRow({
+  icon,
+  name,
+  configured,
+  detail,
+  envVars,
+}: {
+  icon: React.ReactNode
+  name: string
+  configured: boolean
+  detail: string
+  envVars: string[]
+}) {
   return (
     <div className="flex flex-col gap-3 border-b border-line py-4 last:border-0 sm:flex-row sm:items-center">
       <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-line text-muted [&_svg]:size-4">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-sm font-medium">
           {name}
-          {configured ? <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>Configurado</Badge> : <Badge tone="dashed" icon={<CircleDashed className="size-3" />}>Demo mode</Badge>}
+          {configured ? (
+            <Badge tone="solid" icon={<CheckCircle2 className="size-3" />}>
+              Configurado
+            </Badge>
+          ) : (
+            <Badge tone="dashed" icon={<CircleDashed className="size-3" />}>
+              Demo mode
+            </Badge>
+          )}
         </p>
         <p className="mt-0.5 text-xs text-muted">{detail}</p>
       </div>
       <div className="flex flex-wrap gap-1">
-        {envVars.map((v) => <code key={v} className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint">{v}</code>)}
+        {envVars.map((v) => (
+          <code key={v} className="rounded-md border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint">
+            {v}
+          </code>
+        ))}
       </div>
     </div>
   )
@@ -231,6 +143,7 @@ function IntegrationRow({ icon, name, configured, detail, envVars }: { icon: Rea
 export default function Settings() {
   const data = useData()
   const spacesData = useSpaces()
+  const { isAdmin } = useAccess()
   const { session, updateProfile } = useSession()
   const toast = useToast()
   const navigate = useNavigate()
@@ -240,8 +153,13 @@ export default function Settings() {
   const [confirm, setConfirm] = useState<null | 'clearDemo' | 'reset'>(null)
 
   const counts = [
-    ['Leads', data.leads.length], ['Clientes', data.clients.length], ['Projetos', data.projects.length], ['Tarefas', data.tasks.length],
-    ['Transações', data.transactions.length], ['Pagamentos', data.payments.length], ['Atividades', data.activities.length],
+    ['Leads', data.leads.length],
+    ['Clientes', data.clients.length],
+    ['Projetos', data.projects.length],
+    ['Tarefas', data.tasks.length],
+    ['Transações', data.transactions.length],
+    ['Pagamentos', data.payments.length],
+    ['Atividades', data.activities.length],
     ['Lançamentos', spacesData.entries.length],
   ] as const
 
@@ -250,8 +168,13 @@ export default function Settings() {
 
   const exportBackup = () => {
     const snapshot = {
-      leads: data.leads, clients: data.clients, projects: data.projects, tasks: data.tasks,
-      transactions: data.transactions, payments: data.payments, activities: data.activities,
+      leads: data.leads,
+      clients: data.clients,
+      projects: data.projects,
+      tasks: data.tasks,
+      transactions: data.transactions,
+      payments: data.payments,
+      activities: data.activities,
       ...Object.fromEntries(SPACE_KEYS.map((k) => [k, spacesData[k]])),
     }
     downloadFile(`zenn-os-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(snapshot, null, 2), 'application/json')
@@ -261,9 +184,15 @@ export default function Settings() {
   const importBackup = async (file: File) => {
     try {
       const parsed = JSON.parse(await file.text()) as Partial<Snapshot>
-      const existing = new Set([...data.leads, ...data.clients, ...data.projects, ...data.tasks, ...data.transactions, ...data.payments, ...data.activities].map((r) => r.id))
+      const existing = new Set(
+        [...data.leads, ...data.clients, ...data.projects, ...data.tasks, ...data.transactions, ...data.payments, ...data.activities].map(
+          (r) => r.id,
+        ),
+      )
       const fresh = Object.fromEntries(
-        Object.entries(parsed).filter(([k]) => !(SPACE_KEYS as readonly string[]).includes(k)).map(([k, rows]) => [k, Array.isArray(rows) ? rows.filter((r: { id?: string }) => r?.id && !existing.has(r.id)) : []]),
+        Object.entries(parsed)
+          .filter(([k]) => !(SPACE_KEYS as readonly string[]).includes(k))
+          .map(([k, rows]) => [k, Array.isArray(rows) ? rows.filter((r: { id?: string }) => r?.id && !existing.has(r.id)) : []]),
       ) as Partial<Snapshot>
       await importSnapshot(fresh)
       let total = Object.values(fresh).reduce((a, r) => a + (r?.length ?? 0), 0)
@@ -285,12 +214,16 @@ export default function Settings() {
     <>
       <PageHeader eyebrow="Sistema" title="Configurações" description="Perfil, espaços, segurança, integrações e backup dos dados." />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
           <CardHeader eyebrow="Operador" title="Perfil" />
           <CardBody className="space-y-4">
-            <FormField label="Nome"><Input value={name} onChange={(e) => setName(e.target.value)} /></FormField>
-            <FormField label="E-mail"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></FormField>
+            <FormField label="Nome">
+              <Input value={name} onChange={(e) => setName(e.target.value)} />
+            </FormField>
+            <FormField label="E-mail">
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </FormField>
             <div className="flex items-center justify-between">
               <span className="text-xs text-faint">{session?.mode === 'supabase' ? 'Supabase Auth' : 'Sessão local'}</span>
               <Button
@@ -308,57 +241,98 @@ export default function Settings() {
           </CardBody>
         </Card>
 
-        <SpacesSettingsCard />
+        {isAdmin && <SpacesSettingsCard />}
 
-        <Card className="lg:col-span-2">
-          <CardHeader eyebrow="Integrações" title="Status das APIs" />
-          <CardBody className="pt-2">
-            <IntegrationRow icon={<MapPinned />} name="Google Places API" configured={integrations.googlePlaces} envVars={['GOOGLE_MAPS_API_KEY']}
-              detail={integrations.googlePlaces ? 'Buscas de prospecção usam dados reais (Places API New · Text Search).' : 'Sem chave: a prospecção usa o OpenStreetMap (gratuito). Com a chave do Google, vem mais telefone.'} />
-            <IntegrationRow icon={<Database />} name="Supabase" configured={integrations.supabase} envVars={['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_DATA_PROVIDER']}
-              detail={`Persistência atual: ${data.providerName === 'supabase' ? 'Supabase (Postgres)' : 'localStorage deste navegador'}. ${integrations.supabase && data.providerName !== 'supabase' ? 'Defina VITE_DATA_PROVIDER=supabase para usar o banco.' : ''} Schema em supabase/schema.sql.`} />
-            <IntegrationRow icon={<FacebookIcon />} name="Meta Graph API" configured={integrations.meta} envVars={['META_ACCESS_TOKEN', 'META_APP_ID', 'META_GRAPH_VERSION']}
-              detail={integrations.meta ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.` : 'Sem token: o enriquecimento pelo Facebook/Instagram fica desligado.'} />
-          </CardBody>
-        </Card>
+        {isAdmin && <AccessSettingsCard />}
+
+        {isAdmin && (
+          <Card className="lg:col-span-2">
+            <CardHeader eyebrow="Integrações" title="Status das APIs" />
+            <CardBody className="pt-2">
+              <IntegrationRow
+                icon={<Database />}
+                name="Supabase"
+                configured={integrations.supabase}
+                envVars={['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'VITE_DATA_PROVIDER']}
+                detail={`Persistência atual: ${data.providerName === 'supabase' ? 'Supabase (Postgres)' : 'localStorage deste navegador'}. ${integrations.supabase && data.providerName !== 'supabase' ? 'Defina VITE_DATA_PROVIDER=supabase para usar o banco.' : ''} Schema em supabase/schema.sql.`}
+              />
+              <IntegrationRow
+                icon={<FacebookIcon />}
+                name="Meta Graph API"
+                configured={integrations.meta}
+                envVars={['META_ACCESS_TOKEN', 'META_APP_ID', 'META_GRAPH_VERSION']}
+                detail={
+                  integrations.meta
+                    ? `Enriquecimento de leads via Graph API ${env.metaGraphVersion}.`
+                    : 'Sem token: o enriquecimento pelo Facebook/Instagram fica desligado.'
+                }
+              />
+            </CardBody>
+          </Card>
+        )}
 
         <PasswordCard />
 
-        <GoogleKeyCard />
-
-        <Card className="lg:col-span-2">
-          <CardHeader eyebrow="Dados" title="Base armazenada" action={<Badge tone="muted">{data.providerName}</Badge>} />
-          <CardBody>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {counts.map(([label, n]) => (
-                <div key={label} className="rounded-xl border border-line px-3 py-2.5">
-                  <p className="text-[10px] tracking-wider text-faint uppercase">{label}</p>
-                  <p className="mt-1 font-mono text-lg">{n}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button variant="outline" icon={<Download className="size-4" />} onClick={exportBackup}>Exportar backup JSON</Button>
-              <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>Importar backup</Button>
-              <input ref={fileRef} type="file" accept="application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void importBackup(f); e.target.value = '' }} />
-              {data.hasDemoData && (
-                <Button variant="outline" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('clearDemo')}>Remover dados demo</Button>
-              )}
-              <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('reset')}>Apagar tudo</Button>
-            </div>
-            <p className="mt-3 text-xs text-faint">
-              O backup leva tudo: Zenn Works e os espaços (lançamentos, carteiras, contas fixas, metas e lembretes). Guarde de vez em quando.
-            </p>
-          </CardBody>
-        </Card>
+        {isAdmin && (
+          <Card className="lg:col-span-2">
+            <CardHeader eyebrow="Dados" title="Base armazenada" action={<Badge tone="muted">{data.providerName}</Badge>} />
+            <CardBody>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {counts.map(([label, n]) => (
+                  <div key={label} className="rounded-xl border border-line px-3 py-2.5">
+                    <p className="text-[10px] tracking-wider text-faint uppercase">{label}</p>
+                    <p className="mt-1 font-mono text-lg">{n}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Button variant="outline" icon={<Download className="size-4" />} onClick={exportBackup}>
+                  Exportar backup JSON
+                </Button>
+                <Button variant="outline" icon={<Upload className="size-4" />} onClick={() => fileRef.current?.click()}>
+                  Importar backup
+                </Button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) void importBackup(f)
+                    e.target.value = ''
+                  }}
+                />
+                {data.hasDemoData && (
+                  <Button variant="outline" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('clearDemo')}>
+                    Remover dados demo
+                  </Button>
+                )}
+                <Button variant="danger" icon={<Trash2 className="size-4" />} onClick={() => setConfirm('reset')}>
+                  Apagar tudo
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-faint">
+                O backup leva tudo: Zenn Works e os espaços (lançamentos, carteiras, contas fixas, metas e lembretes). Guarde de vez em
+                quando.
+              </p>
+            </CardBody>
+          </Card>
+        )}
 
         <Card className="relative overflow-hidden">
           <CardBody className="flex h-full flex-col items-center justify-center text-center">
             <Mascot size={200} variant="mark" />
-            <p className="mt-4 text-sm font-medium">Rever apresentação</p>
-            <p className="mt-1 text-xs text-muted">Mostra novamente o onboarding do Zennzinho.</p>
-            <Button className="mt-4" size="sm" variant="outline" icon={<Sparkles className="size-3.5" />} onClick={() => { localStorage.removeItem('zenn-os:onboarded'); window.location.assign('/welcome') }}>
-              Abrir onboarding
+            <p className="mt-4 text-sm font-medium">Deixe com a sua cara</p>
+            <p className="mt-1 text-xs text-muted">Nome do sistema, cor, tamanho da letra e o que aparece no menu.</p>
+            <Button
+              className="mt-4"
+              size="sm"
+              variant="primary"
+              icon={<Sparkles className="size-3.5" />}
+              onClick={() => navigate('/personalizar')}
+            >
+              Personalizar
             </Button>
           </CardBody>
         </Card>
@@ -371,7 +345,10 @@ export default function Settings() {
         description="Remove apenas registros marcados como DEMO. Seus dados reais permanecem."
         confirmLabel="Remover"
         danger
-        onConfirm={async () => { await data.clearDemo(); toast.success('Dados demo removidos') }}
+        onConfirm={async () => {
+          await data.clearDemo()
+          toast.success('Dados demo removidos')
+        }}
       />
       <ConfirmDialog
         open={confirm === 'reset'}
@@ -380,7 +357,11 @@ export default function Settings() {
         description="Remove TODOS os leads, clientes, projetos, tarefas e transações da Zenn Works (os espaços Pessoal/Trabalho não são afetados). Exporte um backup antes."
         confirmLabel="Apagar tudo"
         danger
-        onConfirm={async () => { await data.resetAll(); toast.success('Base zerada'); navigate('/') }}
+        onConfirm={async () => {
+          await data.resetAll()
+          toast.success('Base zerada')
+          navigate('/')
+        }}
       />
     </>
   )

@@ -313,3 +313,107 @@ insert into public.spaces (id, name, kind, position) values
   ('pessoal', 'Pessoal', 'pessoal', 1),
   ('trabalho', 'Trabalho', 'empresa', 2)
 on conflict (id) do nothing;
+
+-- ============================================================
+-- Serviços (móveis, fretes...) e acesso por espaço
+-- ============================================================
+create table if not exists public.jobs (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  kind text not null default 'movel' check (kind in ('movel','frete','outro')),
+  title text not null,
+  client text not null default '',
+  phone text,
+  address text not null default '',
+  description text not null default '',
+  value numeric(14,2) not null default 0,
+  cost_estimate numeric(14,2) not null default 0,
+  deadline date,
+  status text not null default 'orcamento' check (status in ('orcamento','aprovado','andamento','entregue','cancelado')),
+  notes text not null default ''
+);
+create index if not exists jobs_space_idx on public.jobs(space_id);
+alter table public.entries add column if not exists job_id text references public.jobs(id) on delete set null;
+create index if not exists entries_job_idx on public.entries(job_id);
+
+-- O administrador (app_members) vê tudo. Outras contas (clientes, família)
+-- veem só os espaços liberados: editor lança e edita; leitor só vê.
+create table if not exists public.space_members (
+  space_id text not null references public.spaces(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  email text,
+  role text not null default 'editor' check (role in ('editor','leitor')),
+  created_at timestamptz not null default now(),
+  primary key (space_id, user_id)
+);
+alter table public.space_members enable row level security;
+create policy space_members_read on public.space_members for select to authenticated
+  using (public.is_app_member() or user_id = auth.uid());
+create policy space_members_admin_remove on public.space_members for delete to authenticated using (public.is_app_member());
+create policy space_members_admin_change on public.space_members for update to authenticated
+  using (public.is_app_member()) with check (public.is_app_member());
+
+create or replace function public.can_read_space(sid text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_app_member()
+      or exists (select 1 from public.space_members m where m.space_id = sid and m.user_id = auth.uid());
+$$;
+
+create or replace function public.can_write_space(sid text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.is_app_member()
+      or exists (select 1 from public.space_members m where m.space_id = sid and m.user_id = auth.uid() and m.role = 'editor');
+$$;
+
+-- Regras por espaço: a política members_all de cada tabela passa a ler com
+-- can_read_space e gravar com can_write_space; políticas restritivas impedem
+-- quem só lê de alterar ou apagar. Espaços: só o administrador cria/altera.
+alter policy members_all on public.spaces using (public.can_read_space(id)) with check (public.is_app_member());
+create policy spaces_admin_update on public.spaces as restrictive for update to authenticated using (public.is_app_member());
+create policy spaces_admin_delete on public.spaces as restrictive for delete to authenticated using (public.is_app_member());
+
+do $$
+declare t text;
+begin
+  foreach t in array array['wallets','entries','recurrings','budgets','goals','reminders'] loop
+    execute format('alter policy members_all on public.%I using (public.can_read_space(space_id)) with check (public.can_write_space(space_id))', t);
+    execute format('create policy write_update on public.%I as restrictive for update to authenticated using (public.can_write_space(space_id))', t);
+    execute format('create policy write_delete on public.%I as restrictive for delete to authenticated using (public.can_write_space(space_id))', t);
+  end loop;
+end $$;
+
+alter table public.jobs enable row level security;
+create policy members_all on public.jobs for all to authenticated using (public.can_read_space(space_id)) with check (public.can_write_space(space_id));
+create policy write_update on public.jobs as restrictive for update to authenticated using (public.can_write_space(space_id));
+create policy write_delete on public.jobs as restrictive for delete to authenticated using (public.can_write_space(space_id));
+
+-- Liberar acesso por e-mail (só o administrador). A pessoa cria a conta antes.
+create or replace function public.grant_space_access(p_email text, p_space_id text, p_role text)
+returns json language plpgsql security definer set search_path = public as $$
+declare
+  v_user uuid;
+  v_email text;
+begin
+  if not public.is_app_member() then
+    raise exception 'Só o administrador pode liberar acesso.' using errcode = '42501';
+  end if;
+  if p_role not in ('editor','leitor') then
+    raise exception 'Permissão inválida.';
+  end if;
+  if not exists (select 1 from public.spaces where id = p_space_id) then
+    raise exception 'Espaço não encontrado.';
+  end if;
+  select u.id, u.email into v_user, v_email from auth.users u where lower(u.email) = lower(trim(p_email)) limit 1;
+  if v_user is null then
+    raise exception 'conta_nao_encontrada' using errcode = 'P0002';
+  end if;
+  insert into public.space_members (space_id, user_id, email, role)
+  values (p_space_id, v_user, v_email, p_role)
+  on conflict (space_id, user_id) do update set role = excluded.role, email = excluded.email;
+  return json_build_object('user_id', v_user, 'email', v_email);
+end;
+$$;
+grant execute on function public.grant_space_access(text, text, text) to authenticated;

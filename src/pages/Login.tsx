@@ -10,8 +10,10 @@ import { useSession } from '@/context/SessionContext'
 import { integrations } from '@/lib/env'
 
 export default function Login() {
-  const { session, onboarded, signInLocal, signInSupabase } = useSession()
+  const { session, onboarded, signInLocal, signInSupabase, signUpSupabase } = useSession()
   const navigate = useNavigate()
+  const [mode, setMode] = useState<'entrar' | 'criar'>('entrar')
+  const [notice, setNotice] = useState<string | null>(null)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -20,16 +22,26 @@ export default function Login() {
   const supabaseAuth = integrations.supabase
 
   if (!onboarded) return <Navigate to="/welcome" replace />
-  if (session) return <Navigate to="/geral" replace />
+  if (session) return <Navigate to="/inicio" replace />
+
+  const creating = supabaseAuth && mode === 'criar'
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setBusy(true)
     try {
-      if (supabaseAuth) await signInSupabase(email, password)
+      if (creating) {
+        const mustConfirm = await signUpSupabase(name, email, password)
+        if (mustConfirm) {
+          setNotice('Conta criada! Abra o e-mail que enviamos, confirme, e depois entre aqui. Avise o administrador para liberar o seu acesso.')
+          setMode('entrar')
+          return
+        }
+      } else if (supabaseAuth) await signInSupabase(email, password)
       else signInLocal(name || email.split('@')[0] || 'Operador', email)
-      navigate('/geral')
+      navigate('/inicio')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao entrar.')
     } finally {
@@ -46,7 +58,7 @@ export default function Login() {
             alt="Zenn Works — Ideias → Código → Resultados"
             className="pointer-events-none w-full max-w-[620px] animate-fade-in mix-blend-screen [mask-image:radial-gradient(ellipse_at_center,black_60%,transparent_80%)]"
           />
-          <p className="eyebrow mt-2">Prospecção · CRM · Projetos · Financeiro</p>
+          <p className="eyebrow mt-2">Trabalho · Pessoal · Zenn Works</p>
         </div>
         <div className="absolute bottom-8 left-10">
           <Logo />
@@ -60,15 +72,17 @@ export default function Login() {
             <Logo />
           </div>
           <p className="eyebrow mb-3">Acesso</p>
-          <h1 className="text-3xl font-light tracking-tight">Entrar no Zenn OS</h1>
+          <h1 className="text-3xl font-light tracking-tight">{creating ? 'Criar conta' : 'Entrar'}</h1>
           <p className="mt-2 text-sm text-muted">
-            {supabaseAuth
-              ? 'Autenticação via Supabase Auth.'
-              : 'Sessão local: seu perfil fica salvo apenas neste navegador. Configure o Supabase para autenticação real.'}
+            {!supabaseAuth
+              ? 'Sessão local: seu perfil fica salvo apenas neste navegador.'
+              : creating
+                ? 'Depois de criar, o administrador libera o que você pode ver.'
+                : 'Use o e-mail e a senha da sua conta.'}
           </p>
 
           <div className="mt-8 space-y-4">
-            {!supabaseAuth && (
+            {(!supabaseAuth || creating) && (
               <FormField label="Nome" htmlFor="name">
                 <Input id="name" icon={<User />} value={name} onChange={(e) => setName(e.target.value)} placeholder="Seu nome" required autoFocus />
               </FormField>
@@ -85,17 +99,42 @@ export default function Login() {
               />
             </FormField>
             {supabaseAuth && (
-              <FormField label="Senha" htmlFor="password">
-                <Input id="password" type="password" icon={<Lock />} value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <FormField label="Senha" htmlFor="password" hint={creating ? 'pelo menos 8 caracteres' : undefined}>
+                <Input
+                  id="password"
+                  type="password"
+                  icon={<Lock />}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete={creating ? 'new-password' : 'current-password'}
+                  minLength={creating ? 8 : undefined}
+                  required
+                />
               </FormField>
             )}
           </div>
 
           {error && <p className="mt-4 text-sm text-danger">{error}</p>}
+          {notice && <p className="mt-4 rounded-xl border border-line-strong px-3 py-2 text-sm text-fg-soft">{notice}</p>}
 
           <Button type="submit" variant="primary" size="lg" loading={busy} className="mt-8 w-full" icon={<ArrowRight className="size-4" />}>
-            Entrar
+            {creating ? 'Criar conta' : 'Entrar'}
           </Button>
+          {supabaseAuth && (
+            <p className="mt-5 text-center text-sm text-muted">
+              {creating ? 'Já tem conta? ' : 'Ainda não tem conta? '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode(creating ? 'entrar' : 'criar')
+                  setError(null)
+                }}
+                className="text-fg underline-offset-2 hover:underline"
+              >
+                {creating ? 'Entrar' : 'Criar conta'}
+              </button>
+            </p>
+          )}
         </form>
       </section>
     </div>

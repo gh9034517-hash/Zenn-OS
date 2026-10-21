@@ -80,6 +80,9 @@ export function whatsappLink(phone: string | null, text = ''): string | null {
   return `https://wa.me/${full}${text ? `?text=${encodeURIComponent(text)}` : ''}`
 }
 
+/** Empresa sem site (campo vazio). */
+export const hasNoWebsite = (website: string | null | undefined) => !website || !website.trim()
+
 export function normalize(value: string | null | undefined): string {
   return (value ?? '')
     .toLowerCase()
