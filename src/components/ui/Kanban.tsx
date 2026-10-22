@@ -32,7 +32,7 @@ export function Kanban<T extends { id: string }, S extends string>({
 
   return (
     <div className="-mx-4 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0">
-      <div className="flex min-w-max gap-3">
+      <div className="flex min-w-max gap-3 xl:min-w-0">
         {columns.map((col) => {
           const colItems = items.filter((i) => getStatus(i) === col.id)
           const isOver = overCol === col.id && dragId !== null
@@ -57,7 +57,8 @@ export function Kanban<T extends { id: string }, S extends string>({
               }}
               data-column={col.id}
               className={cn(
-                'flex w-[280px] shrink-0 flex-col rounded-2xl border bg-ink/60 transition-all duration-200',
+                // Telas largas: colunas dividem o espaço (sem rolar); estreitas: 280px e rola.
+                'flex w-[280px] shrink-0 flex-col rounded-2xl border bg-ink/60 transition-all duration-200 xl:w-0 xl:min-w-[230px] xl:flex-1',
                 isOver ? 'border-white/40 bg-white/[0.04] shadow-[0_0_0_4px_rgba(255,255,255,0.04)]' : 'border-line',
               )}
             >

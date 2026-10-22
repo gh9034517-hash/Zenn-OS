@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, Contact, CornerDownLeft, Receipt, Search, Users, type LucideIcon } from 'lucide-react'
+import { Briefcase, Contact, CornerDownLeft, Hammer, Package, Receipt, Search, Users, type LucideIcon } from 'lucide-react'
 import { useData } from '@/context/DataContext'
 import { useSpaces } from '@/context/SpacesContext'
 import { formatCurrency, formatDateShort, normalize } from '@/utils/format'
@@ -10,7 +10,7 @@ import { cn } from '@/utils/cn'
 
 interface Result {
   id: string
-  kind: 'Lead' | 'Cliente' | 'Projeto' | 'Lançamento'
+  kind: 'Lead' | 'Cliente' | 'Projeto' | 'Lançamento' | 'Serviço' | 'Estoque'
   icon: LucideIcon
   title: string
   subtitle: string
@@ -21,7 +21,7 @@ interface Result {
 /** Busca global: empresa, telefone, cidade, categoria, cliente e projeto. */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { leads, clients, projects } = useData()
-  const { entries, spaces } = useSpaces()
+  const { entries, spaces, jobs, stockItems } = useSpaces()
   const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
@@ -79,6 +79,30 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
           meta: LEAD_STATUS_LABEL[l.status],
           to: `/leads?lead=${l.id}`,
         })),
+      ...jobs
+        .filter((j) => match(j.title, j.client, j.phone, j.address, j.description))
+        .slice(0, 10)
+        .map((j) => ({
+          id: j.id,
+          kind: 'Serviço' as const,
+          icon: Hammer,
+          title: j.title,
+          subtitle: [j.client, j.phone, spaces.find((s) => s.id === j.spaceId)?.name].filter(Boolean).join(' · '),
+          meta: formatCurrency(j.value),
+          to: `/e/${j.spaceId}/servicos?abrir=${j.id}`,
+        })),
+      ...stockItems
+        .filter((i) => match(i.name, i.supplier))
+        .slice(0, 6)
+        .map((i) => ({
+          id: i.id,
+          kind: 'Estoque' as const,
+          icon: Package,
+          title: i.name,
+          subtitle: [i.supplier, spaces.find((s) => s.id === i.spaceId)?.name].filter(Boolean).join(' · '),
+          meta: `${Number(i.qty)} ${i.unit}`,
+          to: `/e/${i.spaceId}/estoque`,
+        })),
       ...entries
         .filter((e) => match(e.description, e.category, e.counterparty, e.notes))
         .slice(0, 15)
@@ -93,7 +117,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         })),
     ]
     return out.slice(0, 30)
-  }, [query, leads, clients, projects, entries, spaces])
+  }, [query, leads, clients, projects, entries, spaces, jobs, stockItems])
 
   useEffect(() => setActive(0), [query])
 

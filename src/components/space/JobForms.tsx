@@ -1,6 +1,8 @@
 // Serviço (móvel, frete...): formulário e ficha com dinheiro, etapas e ações.
 import { useEffect, useState, type FormEvent } from 'react'
-import { ArrowDownLeft, ArrowRight, CalendarClock, Hammer, MapPin, MessageCircle, Pencil, Phone, Receipt, Trash2, Truck } from 'lucide-react'
+import { ArrowDownLeft, ArrowRight, CalendarClock, FileText, Hammer, MapPin, MessageCircle, Pencil, Phone, Receipt, Trash2, Truck } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { JobChecklist, JobStockUse } from '@/components/space/JobExtras'
 import { Drawer, Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { FormField, Input, Select, Textarea } from '@/components/ui/Field'
@@ -24,14 +26,25 @@ import {
 import { formatCurrency, formatDate, formatPercent, whatsappLink } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import type { EntryPreset } from '@/components/space/EntryFormModal'
-import type { Entry, Job, JobKind, JobStatus, Space } from '@/types'
+import type { ChecklistItem, Entry, Job, JobKind, JobStatus, Space } from '@/types'
 
 export const jobKindIcon = (kind: JobKind) => (kind === 'frete' ? Truck : Hammer)
+
+/** Etapas que todo cartão novo já traz (dá para editar no quadro). */
+export function defaultChecklist(kind: JobKind): ChecklistItem[] {
+  const steps =
+    kind === 'frete'
+      ? ['Confirmar endereço e horário', 'Carregar', 'Entregar', 'Receber o pagamento']
+      : kind === 'movel'
+        ? ['Medir no local', 'Comprar material', 'Cortar e fitar', 'Montar', 'Entregar / instalar', 'Receber o restante']
+        : ['Combinar com o cliente', 'Fazer o serviço', 'Receber o pagamento']
+  return steps.map((text, i) => ({ id: `c${i}-${Math.random().toString(36).slice(2, 7)}`, text, done: false }))
+}
 
 const toInput = (n: number | undefined) => (n ? String(n).replace('.', ',') : '')
 
 /** Valores para abrir o formulário de serviço já preenchido (ex.: vindo da calculadora). */
-export type JobPreset = Partial<Pick<Job, 'kind' | 'title' | 'value' | 'costEstimate' | 'description' | 'client'>>
+export type JobPreset = Partial<Pick<Job, 'kind' | 'title' | 'value' | 'costEstimate' | 'description' | 'client' | 'phone' | 'address'>>
 
 export function JobFormModal({
   open,
@@ -65,8 +78,8 @@ export function JobFormModal({
     setKind(job?.kind ?? preset?.kind ?? 'movel')
     setTitle(job?.title ?? preset?.title ?? '')
     setClient(job?.client ?? preset?.client ?? '')
-    setPhone(job?.phone ?? '')
-    setAddress(job?.address ?? '')
+    setPhone(job?.phone ?? preset?.phone ?? '')
+    setAddress(job?.address ?? preset?.address ?? '')
     setValue(toInput(job?.value ?? preset?.value))
     setCost(toInput(job?.costEstimate ?? preset?.costEstimate))
     setDeadline(job?.deadline ?? '')
@@ -97,7 +110,7 @@ export function JobFormModal({
     setBusy(true)
     try {
       if (job) await updateJob(job.id, data)
-      else await createJob({ ...data, spaceId: space.id, notes: '' })
+      else await createJob({ ...data, spaceId: space.id, notes: '', checklist: defaultChecklist(kind) })
       toast.success(job ? 'Serviço atualizado' : 'Serviço criado', data.title)
       onClose()
     } catch (err) {
@@ -142,7 +155,7 @@ export function JobFormModal({
           <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Opcional" />
         </FormField>
         <FormField label="Preço combinado">
-          <MoneyInput value={value} onChange={setValue} />
+          <MoneyInput value={value} onChange={setValue} required={false} />
         </FormField>
         <FormField label={isFrete ? 'Custo previsto (diesel, pedágio…)' : 'Custo previsto (material)'} hint="opcional">
           <div className="relative">
@@ -198,6 +211,7 @@ export function JobDrawer({
 }) {
   const { entries, wallets, updateJob, deleteJob, setEntryPaid } = useSpaces()
   const toast = useToast()
+  const navigate = useNavigate()
   const [confirm, setConfirm] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -357,6 +371,8 @@ export function JobDrawer({
             )}
           </div>
 
+          <JobChecklist job={job} readOnly={readOnly} />
+
           {/* Dinheiro */}
           <div className="rounded-2xl border border-line p-4">
             <div className="flex items-baseline justify-between">
@@ -428,6 +444,25 @@ export function JobDrawer({
               )}
             </div>
           )}
+
+          <JobStockUse job={job} readOnly={readOnly} />
+
+          {/* Documentos para o cliente */}
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" size="sm" icon={<FileText className="size-3.5" />} onClick={() => navigate(`/e/${job.spaceId}/servicos/${job.id}/orcamento`)}>
+              Gerar orçamento
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={<Receipt className="size-3.5" />}
+              disabled={f.received <= 0}
+              title={f.received <= 0 ? 'Lance um pagamento recebido primeiro' : undefined}
+              onClick={() => navigate(`/e/${job.spaceId}/servicos/${job.id}/recibo`)}
+            >
+              Gerar recibo
+            </Button>
+          </div>
 
           {/* Lançamentos do serviço */}
           <div>

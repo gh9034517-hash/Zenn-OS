@@ -7,7 +7,7 @@ import { useSpaces } from '@/context/SpacesContext'
 import { useAccess } from '@/context/AccessContext'
 import { usePrefs } from '@/context/PrefsContext'
 import { useActiveSpace, spaceHome } from '@/hooks/useActiveSpace'
-import { isEntryOverdue, localISO } from '@/services/spaceMath'
+import { isEntryOverdue, isLowStock, localISO } from '@/services/spaceMath'
 import { cn } from '@/utils/cn'
 import type { Space } from '@/types'
 
@@ -39,7 +39,7 @@ export function Sidebar({
 }) {
   const { session, signOut } = useSession()
   const { leads } = useData()
-  const { spaces, reminders } = useSpaces()
+  const { spaces, reminders, stockItems, jobs } = useSpaces()
   const { key, groups } = useActiveSpace()
   const { isAdmin } = useAccess()
   const { prefs } = usePrefs()
@@ -60,9 +60,13 @@ export function Sidebar({
 
   const badgeFor = (to: string) => {
     if (to === '/leads') return newLeads
-    const m = to.match(/^\/e\/([^/]+)\/(contas|lembretes)$/)
+    const m = to.match(/^\/e\/([^/]+)\/(contas|lembretes|estoque|servicos)$/)
     if (!m) return 0
     if (m[2] === 'contas') return due[m[1]] ?? 0
+    // Estoque: itens acabando. Quadro: serviços com prazo vencido.
+    if (m[2] === 'estoque') return stockItems.filter((i) => i.spaceId === m[1] && isLowStock(i)).length
+    if (m[2] === 'servicos')
+      return jobs.filter((j) => j.spaceId === m[1] && j.deadline && j.deadline < today && j.status !== 'entregue' && j.status !== 'cancelado').length
     return reminders.filter((r) => r.spaceId === m[1] && !r.done && r.dueDate && r.dueDate <= today).length
   }
 

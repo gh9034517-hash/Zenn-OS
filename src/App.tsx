@@ -26,6 +26,10 @@ const SpacePlanning = lazy(() => import('@/pages/space/SpacePlanning'))
 const SpaceReport = lazy(() => import('@/pages/space/SpaceReport'))
 const SpaceReminders = lazy(() => import('@/pages/space/SpaceReminders'))
 const SpaceJobs = lazy(() => import('@/pages/space/SpaceJobs'))
+const JobDocument = lazy(() => import('@/pages/space/JobDocument'))
+const SpaceClients = lazy(() => import('@/pages/space/SpaceClients'))
+const SpaceStock = lazy(() => import('@/pages/space/SpaceStock'))
+const SpaceAgenda = lazy(() => import('@/pages/space/SpaceAgenda'))
 const Calculators = lazy(() => import('@/pages/Calculators'))
 const Customize = lazy(() => import('@/pages/Customize'))
 
@@ -52,6 +56,10 @@ export default function App() {
         <Route path="e/:spaceId" element={<SpaceLayout />}>
           <Route index element={<SpaceHome />} />
           <Route path="servicos" element={<SpaceJobs />} />
+          <Route path="servicos/:jobId/:doc" element={<JobDocument />} />
+          <Route path="clientes" element={<SpaceClients />} />
+          <Route path="estoque" element={<SpaceStock />} />
+          <Route path="agenda" element={<SpaceAgenda />} />
           <Route path="movimentacoes" element={<SpaceEntries />} />
           <Route path="contas" element={<SpaceBills />} />
           <Route path="fixas" element={<SpaceRecurring />} />

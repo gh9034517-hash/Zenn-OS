@@ -21,6 +21,13 @@ export interface Prefs {
   hiddenSpaces: string[]
   startHidden: boolean
   reduceMotion: boolean
+  /** dados que saem no orçamento e no recibo */
+  businessName: string
+  businessPhone: string
+  businessCity: string
+  businessDoc: string
+  /** WhatsApp de quem recebe o "resumo da semana" (ex.: o dono do negócio) */
+  reportPhone: string
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -33,6 +40,11 @@ export const DEFAULT_PREFS: Prefs = {
   hiddenSpaces: [],
   startHidden: false,
   reduceMotion: false,
+  businessName: '',
+  businessPhone: '',
+  businessCity: '',
+  businessDoc: '',
+  reportPhone: '',
 }
 
 /** Cores de destaque: sempre metálicas, nada de neon. [claro, escuro, texto em cima] */

@@ -174,6 +174,28 @@ export default function Customize() {
             <p className="pt-2 text-xs text-faint">Esconder só tira do menu: nada é apagado e dá para mostrar de novo aqui.</p>
           </CardBody>
         </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader eyebrow="Orçamentos e recibos" title="Dados da empresa" />
+          <CardBody className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <p className="text-sm text-muted sm:col-span-2">Saem no cabeçalho do orçamento e do recibo que você imprime ou manda para o cliente.</p>
+            <FormField label="Nome da empresa">
+              <Input value={prefs.businessName} onChange={(e) => update({ businessName: e.target.value })} placeholder="Ex.: Marcenaria Silva" />
+            </FormField>
+            <FormField label="Telefone / WhatsApp">
+              <Input value={prefs.businessPhone} onChange={(e) => update({ businessPhone: e.target.value })} placeholder="(11) 99999-0000" inputMode="tel" />
+            </FormField>
+            <FormField label="Cidade">
+              <Input value={prefs.businessCity} onChange={(e) => update({ businessCity: e.target.value })} placeholder="Ex.: Campinas - SP" />
+            </FormField>
+            <FormField label="CNPJ ou CPF" hint="opcional">
+              <Input value={prefs.businessDoc} onChange={(e) => update({ businessDoc: e.target.value })} placeholder="00.000.000/0001-00" />
+            </FormField>
+            <FormField label="WhatsApp de quem recebe o resumo da semana" hint="ex.: seu pai" className="sm:col-span-2">
+              <Input value={prefs.reportPhone} onChange={(e) => update({ reportPhone: e.target.value })} placeholder="(11) 99999-0000" inputMode="tel" />
+            </FormField>
+          </CardBody>
+        </Card>
       </div>
     </>
   )

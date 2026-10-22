@@ -3,7 +3,9 @@ import {
   Bell,
   Briefcase,
   Calculator,
+  CalendarDays,
   Hammer,
+  Package,
   Palette,
   CalendarClock,
   CheckSquare,
@@ -63,12 +65,30 @@ export const SYSTEM_NAV: NavGroup = {
 /** Menu de um espaço separado (Pessoal, Trabalho...). Empresas têm Serviços. */
 export function spaceNavigation(spaceId: string, kind: 'pessoal' | 'empresa'): NavGroup[] {
   const base = `/e/${spaceId}`
+  const dayToDay: NavGroup =
+    kind === 'empresa'
+      ? {
+          label: 'Dia a dia',
+          items: [
+            { to: base, label: 'Resumo', icon: LayoutDashboard },
+            { to: `${base}/agenda`, label: 'Agenda', icon: CalendarDays },
+            { to: `${base}/servicos`, label: 'Quadro de serviços', icon: Hammer },
+            { to: `${base}/clientes`, label: 'Clientes', icon: Users },
+            { to: `${base}/estoque`, label: 'Estoque', icon: Package },
+          ],
+        }
+      : {
+          label: 'Dia a dia',
+          items: [
+            { to: base, label: 'Resumo', icon: LayoutDashboard },
+            { to: `${base}/agenda`, label: 'Agenda', icon: CalendarDays },
+          ],
+        }
   return [
+    dayToDay,
     {
       label: 'Dinheiro',
       items: [
-        { to: base, label: 'Resumo', icon: LayoutDashboard },
-        ...(kind === 'empresa' ? [{ to: `${base}/servicos`, label: 'Serviços', icon: Hammer }] : []),
         { to: `${base}/movimentacoes`, label: 'Movimentações', icon: ListOrdered },
         { to: `${base}/contas`, label: 'Contas a pagar', icon: CalendarClock },
         { to: `${base}/fixas`, label: 'Contas fixas', icon: Repeat },

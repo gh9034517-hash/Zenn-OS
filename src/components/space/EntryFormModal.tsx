@@ -19,12 +19,15 @@ export function MoneyInput({
   autoFocus,
   id,
   large,
+  required = true,
 }: {
   value: string
   onChange: (v: string) => void
   autoFocus?: boolean
   id?: string
   large?: boolean
+  /** false quando o campo é opcional (o formulário não trava vazio) */
+  required?: boolean
 }) {
   return (
     <div className="relative">
@@ -38,7 +41,7 @@ export function MoneyInput({
         onChange={(e) => onChange(e.target.value)}
         placeholder="0,00"
         className={cn('field pl-10 font-mono', large && 'py-3 text-xl')}
-        required
+        required={required}
       />
     </div>
   )

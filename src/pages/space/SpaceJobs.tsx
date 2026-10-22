@@ -1,23 +1,100 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowRight, Calculator, CalendarClock, Plus } from 'lucide-react'
+import { ArrowRight, Calculator, CalendarClock, CheckSquare, Columns3, List, Plus } from 'lucide-react'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Stat } from '@/components/ui/Stat'
 import { Progress } from '@/components/ui/Progress'
-import { EmptyState } from '@/components/ui/EmptyState'
+import { Segmented } from '@/components/ui/Segmented'
+import { Kanban } from '@/components/ui/Kanban'
 import { Money } from '@/components/space/Money'
-import { JobDrawer, JobFormModal, jobKindIcon, type JobPreset } from '@/components/space/JobForms'
+import { JobDrawer, JobFormModal, defaultChecklist, jobKindIcon, type JobPreset } from '@/components/space/JobForms'
 import { useSpacePage } from '@/layouts/SpaceLayout'
 import { useSpaces } from '@/context/SpacesContext'
 import { useToast } from '@/components/ui/Toast'
-import { JOB_FLOW, JOB_KIND_LABEL, currentYM, jobFinance, jobStatusLabel, localISO, nextJobStatus } from '@/services/spaceMath'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { JOB_FLOW, JOB_KIND_LABEL, addDays, currentYM, jobFinance, jobStatusLabel, localISO, nextJobStatus } from '@/services/spaceMath'
 import { formatDateShort } from '@/utils/format'
 import { cn } from '@/utils/cn'
 import type { Job, JobKind, JobStatus } from '@/types'
 
 type KindFilter = 'todos' | JobKind
+type View = 'quadro' | 'lista'
+
+/** Nome das colunas do quadro (o que o administrador vê no dia a dia). */
+const columnLabel = (s: JobStatus, kind: KindFilter) =>
+  s === 'orcamento'
+    ? 'Para fechar'
+    : s === 'aprovado'
+      ? 'Aprovado · a fazer'
+      : s === 'andamento'
+        ? kind === 'frete'
+          ? 'Agendado'
+          : kind === 'movel'
+            ? 'Em produção'
+            : 'Em produção / agendado'
+        : 'Entregue'
+
+/** Adicionar rápido no fim da coluna, como no Trello: só o nome. */
+function QuickAdd({ status, kind, spaceId }: { status: JobStatus; kind: KindFilter; spaceId: string }) {
+  const { createJob } = useSpaces()
+  const toast = useToast()
+  const [openForm, setOpenForm] = useState(false)
+  const [title, setTitle] = useState('')
+  const k: JobKind = kind === 'todos' ? 'movel' : kind
+  const submit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) return
+    try {
+      await createJob({
+        spaceId,
+        kind: k,
+        title: title.trim(),
+        client: '',
+        phone: null,
+        address: '',
+        description: '',
+        value: 0,
+        costEstimate: 0,
+        deadline: null,
+        status,
+        notes: '',
+        checklist: defaultChecklist(k),
+      })
+      setTitle('')
+    } catch (err) {
+      toast.error('Não deu para criar', err instanceof Error ? err.message : String(err))
+    }
+  }
+  return openForm ? (
+    <form onSubmit={submit} className="space-y-2">
+      <input
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && setOpenForm(false)}
+        placeholder={k === 'frete' ? 'Ex.: Frete chapas — Centro' : 'Ex.: Armário da lavanderia'}
+        className="field py-2 text-sm"
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" variant="primary" disabled={!title.trim()}>
+          Adicionar
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpenForm(false)}>
+          Fechar
+        </Button>
+      </div>
+    </form>
+  ) : (
+    <button
+      onClick={() => setOpenForm(true)}
+      className="flex w-full items-center gap-1.5 rounded-xl px-2 py-2 text-xs text-muted transition hover:bg-white/[0.04] hover:text-fg"
+    >
+      <Plus className="size-3.5" /> Adicionar cartão
+    </button>
+  )
+}
 
 export default function SpaceJobs() {
   const { space, openEntry, readOnly } = useSpacePage()
@@ -26,12 +103,14 @@ export default function SpaceJobs() {
   const location = useLocation()
   const navigate = useNavigate()
   const [kind, setKind] = useState<KindFilter>('todos')
+  const [view, setView] = useLocalStorage<View>('zenn-os:jobs-view', 'quadro')
   const [form, setForm] = useState<{ job: Job | null; preset?: JobPreset | null } | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [showDone, setShowDone] = useState(false)
+  const [showOld, setShowOld] = useState(false)
   const today = localISO()
+  const monthAgo = addDays(today, -30)
 
-  // Vindo da calculadora: abre o "Novo serviço" já com o preço.
+  // Vindo da calculadora ou de Clientes: abre o "Novo serviço" já preenchido.
   useEffect(() => {
     const preset = (location.state as { newJob?: JobPreset } | null)?.newJob
     if (preset) {
@@ -39,6 +118,11 @@ export default function SpaceJobs() {
       navigate(location.pathname, { replace: true, state: null })
     }
   }, [location.state, location.pathname, navigate])
+  // Vindo da Agenda / Clientes: abre o cartão.
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get('abrir')
+    if (id) setOpenId(id)
+  }, [location.search])
 
   const mine = useMemo(() => jobs.filter((j) => j.spaceId === space.id && (kind === 'todos' || j.kind === kind)), [jobs, space.id, kind])
   const open = jobs.find((j) => j.id === openId) ?? null
@@ -46,6 +130,9 @@ export default function SpaceJobs() {
   const quotes = mine.filter((j) => j.status === 'orcamento')
   const delivered = mine.filter((j) => j.status === 'entregue')
   const cancelled = mine.filter((j) => j.status === 'cancelado')
+  // No quadro, "Entregue" mostra só o último mês; o resto fica no histórico.
+  const onBoard = mine.filter((j) => j.status !== 'cancelado' && (j.status !== 'entregue' || j.updatedAt.slice(0, 10) >= monthAgo))
+  const oldOnes = [...delivered.filter((j) => j.updatedAt.slice(0, 10) < monthAgo), ...cancelled]
   const fin = (j: Job) => jobFinance(j, entries)
   const toReceive = mine
     .filter((j) => j.status !== 'cancelado' && j.status !== 'orcamento')
@@ -56,77 +143,89 @@ export default function SpaceJobs() {
   const deliveredThisMonth = delivered.filter((j) => j.updatedAt.slice(0, 7) === currentYM())
   const profitThisMonth = deliveredThisMonth.reduce((a, j) => a + fin(j).profit, 0)
 
-  const advance = async (j: Job) => {
-    const next = nextJobStatus(j.status)
-    if (!next) return
+  const move = async (j: Job, status: JobStatus) => {
     try {
-      await updateJob(j.id, { status: next })
-      toast.success(jobStatusLabel(next, j.kind), j.title)
+      await updateJob(j.id, { status })
+      toast.success(jobStatusLabel(status, j.kind), j.title)
     } catch (e) {
       toast.error('Não deu para salvar', e instanceof Error ? e.message : String(e))
     }
   }
 
-  const JobCard = ({ j }: { j: Job }) => {
+  const JobCard = ({ j, compact }: { j: Job; compact?: boolean }) => {
     const f = fin(j)
     const Icon = jobKindIcon(j.kind)
     const late = j.deadline && j.deadline < today && j.status !== 'entregue' && j.status !== 'cancelado'
     const next = nextJobStatus(j.status)
+    const list = j.checklist ?? []
+    const done = list.filter((c) => c.done).length
     return (
-      <li className="px-4 py-3.5 sm:px-5">
-        <button onClick={() => setOpenId(j.id)} className="flex w-full items-start gap-3 text-left">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-line text-muted">
-            <Icon className="size-4" strokeWidth={1.7} />
+      <div className={cn('rounded-xl border border-line bg-surface p-3 transition hover:border-line-strong', compact && 'rounded-none border-0 bg-transparent px-4 py-3.5 sm:px-5')}>
+        <button onClick={() => setOpenId(j.id)} className="block w-full text-left">
+          <span className="flex items-start gap-2">
+            <Icon className="mt-0.5 size-3.5 shrink-0 text-faint" strokeWidth={1.8} />
+            <span className="min-w-0 flex-1 text-sm leading-snug text-fg">{j.title}</span>
           </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm text-fg">{j.title}</span>
-            <span className="block truncate text-xs text-muted">
-              {[j.client, JOB_KIND_LABEL[j.kind]].filter(Boolean).join(' · ')}
-              {j.deadline && (
-                <span className={cn(late && 'text-danger')}>
-                  {' · '}
-                  {late ? 'atrasado ' : ''}
-                  {formatDateShort(j.deadline)}
-                </span>
-              )}
+          <span className="mt-1 block truncate pl-5.5 text-xs text-muted">
+            {[j.client, compact ? JOB_KIND_LABEL[j.kind] : null].filter(Boolean).join(' · ') || 'sem cliente'}
+          </span>
+          <span className="mt-2.5 flex flex-wrap items-center gap-1.5 pl-5.5 text-[11px]">
+            {j.deadline && (
+              <span className={cn('inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5', late ? 'border-danger/40 text-danger' : 'border-line text-muted')}>
+                <CalendarClock className="size-3" />
+                {formatDateShort(j.deadline)}
+              </span>
+            )}
+            {list.length > 0 && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5',
+                  done === list.length ? 'border-accent bg-accent text-accent-ink' : 'border-line text-muted',
+                )}
+              >
+                <CheckSquare className="size-3" />
+                {done}/{list.length}
+              </span>
+            )}
+            {j.value > 0 && <Money value={j.value} className="ml-auto text-xs text-fg" />}
+          </span>
+          {j.status !== 'orcamento' && j.value > 0 && (
+            <span className="mt-2 block pl-5.5">
+              <Progress value={f.paidRatio} className="h-1" />
+              <span className="mt-1 block text-[10px] text-faint">
+                {f.paidRatio >= 1 ? 'pago' : <>recebido <Money value={f.received} /></>}
+              </span>
             </span>
-          </span>
-          <Money value={j.value} className="shrink-0 text-sm text-fg" />
+          )}
         </button>
-        {j.status !== 'orcamento' && j.status !== 'cancelado' && j.value > 0 && (
-          <div className="mt-2.5 pl-12">
-            <Progress value={f.paidRatio} className="h-1" />
-            <p className="mt-1 text-[11px] text-faint">
-              recebido <Money value={f.received} /> de <Money value={f.value} />
-            </p>
-          </div>
-        )}
         {next && !readOnly && (
-          <div className="mt-2 pl-12">
-            <button onClick={() => void advance(j)} className="inline-flex items-center gap-1 text-xs text-muted transition hover:text-fg">
-              {jobStatusLabel(next, j.kind)} <ArrowRight className="size-3" />
-            </button>
-          </div>
+          <button
+            onClick={() => void move(j, next)}
+            className="mt-2 ml-5.5 inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-[11px] text-muted transition hover:bg-white/5 hover:text-fg"
+          >
+            {jobStatusLabel(next, j.kind)} <ArrowRight className="size-3" />
+          </button>
         )}
-      </li>
+      </div>
     )
   }
-
-  const sections: { status: JobStatus; rows: Job[] }[] = JOB_FLOW.filter((s) => s !== 'entregue').map((s) => ({
-    status: s,
-    rows: mine.filter((j) => j.status === s).sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999')),
-  }))
-  const kindLabel = (s: JobStatus) =>
-    s === 'andamento' ? (kind === 'frete' ? 'Agendados' : kind === 'movel' ? 'Em produção' : 'Em produção / agendados') : jobStatusLabel(s, 'movel')
 
   return (
     <>
       <PageHeader
         eyebrow={space.name}
-        title="Serviços"
-        description="Móveis, fretes e outros serviços: do orçamento à entrega, com quanto cada um rendeu."
+        title="Quadro de serviços"
+        description="Móveis e fretes do primeiro contato à entrega. Arraste os cartões entre as colunas (no celular, toque na próxima etapa)."
         actions={
           <>
+            <Segmented<View>
+              value={view}
+              onChange={setView}
+              options={[
+                { value: 'quadro', label: 'Quadro', icon: <Columns3 /> },
+                { value: 'lista', label: 'Lista', icon: <List /> },
+              ]}
+            />
             <Button variant="outline" icon={<Calculator className="size-4" />} onClick={() => navigate('/calculadoras')}>
               Calcular preço
             </Button>
@@ -140,9 +239,9 @@ export default function SpaceJobs() {
       />
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <Stat label="Em andamento" value={active.length} hint={<><Money value={active.reduce((a, j) => a + j.value, 0)} /> em serviços</>} />
-        <Stat label="Orçamentos" value={quotes.length} hint={<><Money value={quotes.reduce((a, j) => a + j.value, 0)} /> esperando resposta</>} />
-        <Stat label="A receber" value={<Money value={toReceive} />} hint="dos serviços aprovados" />
+        <Stat label="Para fechar" value={quotes.length} hint={<><Money value={quotes.reduce((a, j) => a + j.value, 0)} /> em orçamentos</>} />
+        <Stat label="Em andamento" value={active.length} hint={<><Money value={active.reduce((a, j) => a + j.value, 0)} /> para entregar</>} />
+        <Stat label="A receber" value={<Money value={toReceive} />} hint="dos serviços fechados" />
         <Stat emphasis label="Lucro entregue no mês" value={<Money value={profitThisMonth} />} hint={`${deliveredThisMonth.length} entregues`} />
       </div>
 
@@ -154,56 +253,59 @@ export default function SpaceJobs() {
         ))}
       </div>
 
-      {mine.length === 0 ? (
-        <Card>
-          <EmptyState
-            title={kind === 'todos' ? 'Nenhum serviço ainda' : 'Nada deste tipo'}
-            description="Cadastre o orçamento de um móvel ou um frete. Depois é só ir avançando: aprovado, em produção, entregue — e lançar o sinal e o pagamento."
-            action={
-              !readOnly && (
-                <Button variant="primary" icon={<Plus className="size-4" />} onClick={() => setForm({ job: null })}>
-                  Novo serviço
-                </Button>
-              )
-            }
-          />
-        </Card>
+      {view === 'quadro' ? (
+        <Kanban<Job, JobStatus>
+          columns={JOB_FLOW.map((s) => ({ id: s, label: columnLabel(s, kind) }))}
+          items={onBoard.sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999'))}
+          getStatus={(j) => j.status}
+          onMove={(j, s) => (readOnly ? undefined : move(j, s))}
+          renderCard={(j) => <JobCard j={j} />}
+          columnMeta={(_, rows) => (rows.length ? <Money value={rows.reduce((a, j) => a + j.value, 0)} compact className="text-[11px] text-muted" /> : null)}
+          columnFooter={(s) => (s === 'entregue' || readOnly ? null : <QuickAdd status={s} kind={kind} spaceId={space.id} />)}
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {sections.map((s) => (
-            <Card key={s.status} className="overflow-hidden">
-              <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
-                <p className="text-sm font-medium">{kindLabel(s.status)}</p>
-                <span className="font-mono text-xs text-muted">{s.rows.length}</span>
-              </div>
-              {s.rows.length ? (
-                <ul className="divide-y divide-line">
-                  {s.rows.map((j) => (
-                    <JobCard key={j.id} j={j} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="px-5 py-6 text-center text-xs text-faint">Nenhum</p>
-              )}
-            </Card>
-          ))}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {JOB_FLOW.map((s) => {
+            const rows = onBoard.filter((j) => j.status === s).sort((a, b) => (a.deadline ?? '9999').localeCompare(b.deadline ?? '9999'))
+            return (
+              <Card key={s} className="overflow-hidden">
+                <div className="flex items-center justify-between border-b border-line px-4 py-3 sm:px-5">
+                  <p className="text-sm font-medium">{columnLabel(s, kind)}</p>
+                  <span className="font-mono text-xs text-muted">{rows.length}</span>
+                </div>
+                {rows.length ? (
+                  <ul className="divide-y divide-line">
+                    {rows.map((j) => (
+                      <li key={j.id}>
+                        <JobCard j={j} compact />
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-5 py-6 text-center text-xs text-faint">Nenhum</p>
+                )}
+              </Card>
+            )
+          })}
         </div>
       )}
 
-      {(delivered.length > 0 || cancelled.length > 0) && (
+      {oldOnes.length > 0 && (
         <div className="mt-6">
-          <button onClick={() => setShowDone((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
+          <button onClick={() => setShowOld((v) => !v)} className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
             <CalendarClock className="size-3.5" />
-            {showDone ? 'Esconder' : 'Ver'} entregues ({delivered.length}){cancelled.length ? ` e cancelados (${cancelled.length})` : ''}
+            {showOld ? 'Esconder' : 'Ver'} entregues há mais de 30 dias e cancelados ({oldOnes.length})
           </button>
-          {showDone && (
+          {showOld && (
             <Card className="mt-3 overflow-hidden">
               <ul className="divide-y divide-line">
-                {[...delivered, ...cancelled]
+                {oldOnes
                   .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-                  .slice(0, 40)
+                  .slice(0, 60)
                   .map((j) => (
-                    <JobCard key={j.id} j={j} />
+                    <li key={j.id}>
+                      <JobCard j={j} compact />
+                    </li>
                   ))}
               </ul>
             </Card>
@@ -214,7 +316,10 @@ export default function SpaceJobs() {
       <JobFormModal open={!!form} onClose={() => setForm(null)} space={space} job={form?.job} preset={form?.preset} />
       <JobDrawer
         job={form ? null : open}
-        onClose={() => setOpenId(null)}
+        onClose={() => {
+          setOpenId(null)
+          if (location.search) navigate(location.pathname, { replace: true })
+        }}
         onEdit={() => open && setForm({ job: open })}
         openEntry={openEntry}
         readOnly={readOnly}

@@ -417,3 +417,51 @@ begin
 end;
 $$;
 grant execute on function public.grant_space_access(text, text, text) to authenticated;
+
+-- ============================================================
+-- Checklist dos serviços (quadro) e estoque (chapas, fita, ferragens)
+-- ============================================================
+alter table public.jobs add column if not exists checklist jsonb not null default '[]'::jsonb;
+
+create table if not exists public.stock_items (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  name text not null,
+  kind text not null default 'chapa' check (kind in ('chapa','fita','ferragem','outro')),
+  unit text not null default 'un',
+  qty numeric(14,2) not null default 0,
+  min_qty numeric(14,2) not null default 0,
+  unit_cost numeric(14,2) not null default 0,
+  supplier text not null default '',
+  supplier_phone text,
+  notes text not null default ''
+);
+create index if not exists stock_items_space_idx on public.stock_items(space_id);
+
+-- Cada entrada (+) ou saída (−) do estoque; qty do item é o saldo.
+create table if not exists public.stock_moves (
+  id text primary key,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  is_demo boolean default false,
+  space_id text not null references public.spaces(id) on delete cascade,
+  item_id text not null references public.stock_items(id) on delete cascade,
+  delta numeric(14,2) not null,
+  reason text not null default 'ajuste' check (reason in ('compra','uso','ajuste','perda')),
+  job_id text references public.jobs(id) on delete set null,
+  date date not null default current_date,
+  note text not null default ''
+);
+create index if not exists stock_moves_item_idx on public.stock_moves(item_id);
+
+alter table public.stock_items enable row level security;
+alter table public.stock_moves enable row level security;
+create policy members_all on public.stock_items for all to authenticated using (public.can_read_space(space_id)) with check (public.can_write_space(space_id));
+create policy write_update on public.stock_items as restrictive for update to authenticated using (public.can_write_space(space_id));
+create policy write_delete on public.stock_items as restrictive for delete to authenticated using (public.can_write_space(space_id));
+create policy members_all on public.stock_moves for all to authenticated using (public.can_read_space(space_id)) with check (public.can_write_space(space_id));
+create policy write_update on public.stock_moves as restrictive for update to authenticated using (public.can_write_space(space_id));
+create policy write_delete on public.stock_moves as restrictive for delete to authenticated using (public.can_write_space(space_id));

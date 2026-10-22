@@ -1,6 +1,6 @@
 // Cálculos dos espaços (Pessoal, Trabalho...). Funções puras: recebem os
 // registros e devolvem números — nada aqui lê ou grava no banco.
-import type { Entry, Job, JobKind, JobStatus, Recurring, SpaceKind, TransactionType, Wallet } from '@/types'
+import type { Entry, Job, JobKind, JobStatus, Recurring, SpaceKind, StockItem, TransactionType, Wallet } from '@/types'
 
 // ------------------------------------------------------------
 // Datas (sempre no fuso do aparelho, não em UTC)
@@ -259,4 +259,73 @@ export function jobFinance(job: Pick<Job, 'id' | 'value' | 'costEstimate'>, entr
     paidRatio: value > 0 ? Math.min(1, received / value) : 0,
     entries: mine,
   }
+}
+
+// ------------------------------------------------------------
+// Clientes (montados a partir dos serviços)
+// ------------------------------------------------------------
+export interface ClientSummary {
+  key: string
+  name: string
+  phone: string | null
+  address: string
+  jobs: Job[]
+  /** serviços para fechar (orçamento) */
+  quotes: Job[]
+  /** aprovados ou em produção/agendados */
+  active: Job[]
+  /** quanto ainda falta receber dos serviços fechados */
+  toReceive: number
+  /** total dos serviços fechados (aprovados, em andamento, entregues) */
+  total: number
+  lastActivity: string
+}
+
+const clientKey = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/\s+/g, ' ')
+
+export function clientsFromJobs(jobs: Job[], entries: Entry[]): ClientSummary[] {
+  const map = new Map<string, ClientSummary>()
+  for (const j of jobs) {
+    if (!j.client.trim()) continue
+    const key = clientKey(j.client)
+    const c =
+      map.get(key) ??
+      ({ key, name: j.client.trim(), phone: null, address: '', jobs: [], quotes: [], active: [], toReceive: 0, total: 0, lastActivity: '' } as ClientSummary)
+    c.jobs.push(j)
+    if (j.status === 'orcamento') c.quotes.push(j)
+    if (j.status === 'aprovado' || j.status === 'andamento') c.active.push(j)
+    if (j.status !== 'orcamento' && j.status !== 'cancelado') {
+      const f = jobFinance(j, entries)
+      c.toReceive = Math.round((c.toReceive + f.toReceive + f.notCharged) * 100) / 100
+      c.total = Math.round((c.total + Number(j.value)) * 100) / 100
+    }
+    // Dados mais recentes valem (telefone novo, endereço novo).
+    if (j.updatedAt >= c.lastActivity) {
+      c.lastActivity = j.updatedAt
+      c.name = j.client.trim()
+      if (j.phone) c.phone = j.phone
+      if (j.address) c.address = j.address
+    }
+    if (!c.phone && j.phone) c.phone = j.phone
+    if (!c.address && j.address) c.address = j.address
+    map.set(key, c)
+  }
+  return [...map.values()].sort((a, b) => b.lastActivity.localeCompare(a.lastActivity))
+}
+
+// ------------------------------------------------------------
+// Estoque
+// ------------------------------------------------------------
+export const isLowStock = (i: Pick<StockItem, 'qty' | 'minQty'>) => Number(i.minQty) > 0 && Number(i.qty) <= Number(i.minQty)
+
+export function stockTotals(items: StockItem[]) {
+  const sheets = items.filter((i) => i.kind === 'chapa').reduce((a, i) => a + Number(i.qty), 0)
+  const value = items.reduce((a, i) => a + Math.max(0, Number(i.qty)) * Number(i.unitCost), 0)
+  return { sheets: Math.round(sheets * 100) / 100, value: Math.round(value * 100) / 100, low: items.filter(isLowStock) }
 }

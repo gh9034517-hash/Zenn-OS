@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AlertTriangle, ArrowLeftRight, ArrowRight, Check, HandCoins, Plus, Repeat, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowLeftRight, ArrowRight, Check, HandCoins, MessageCircle, Plus, Repeat, Wallet } from 'lucide-react'
+import { usePrefs } from '@/context/PrefsContext'
+import { weeklySummary } from '@/services/summary'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { Card, CardBody, CardHeader } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -23,13 +25,14 @@ import {
   categoryBreakdown,
   currentYM,
   isEntryOverdue,
+  isLowStock,
   localISO,
   monthTotals,
   monthlySeries,
   monthsEnding,
   walletBalance,
 } from '@/services/spaceMath'
-import { formatCurrency, formatCurrencyCompact, formatDateShort, formatPercent } from '@/utils/format'
+import { formatCurrency, formatCurrencyCompact, formatDateShort, formatPercent, whatsappLink } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
 function Delta({ now, before, invert }: { now: number; before: number; invert?: boolean }) {
@@ -47,7 +50,8 @@ function Delta({ now, before, invert }: { now: number; before: number; invert?: 
 
 export default function SpaceHome() {
   const { space, words, openEntry, openTransfer, readOnly } = useSpacePage()
-  const { spaces, wallets, entries, recurrings, budgets, goals, reminders, setEntryPaid, updateReminder } = useSpaces()
+  const { spaces, wallets, entries, recurrings, budgets, goals, reminders, jobs, stockItems, setEntryPaid, updateReminder } = useSpaces()
+  const { prefs } = usePrefs()
   const toast = useToast()
   const [hidden] = useHideValues()
   const [ym, setYm] = useState(currentYM())
@@ -72,6 +76,17 @@ export default function SpaceHome() {
   const myGoals = goals.filter((g) => g.spaceId === space.id)
   const myReminders = reminders.filter((r) => r.spaceId === space.id && !r.done).slice(0, 5)
   const hasOther = spaces.some((s) => s.id !== space.id)
+  // Oficina (só em espaço de empresa): serviços, entregas e estoque.
+  const myJobs = jobs.filter((j) => j.spaceId === space.id)
+  const quotes = myJobs.filter((j) => j.status === 'orcamento')
+  const inProgress = myJobs.filter((j) => j.status === 'aprovado' || j.status === 'andamento')
+  const weekDeliveries = myJobs.filter((j) => j.deadline && j.deadline <= addDays(today, 6) && j.status !== 'entregue' && j.status !== 'cancelado')
+  const lateDeliveries = weekDeliveries.filter((j) => j.deadline! < today)
+  const myStock = stockItems.filter((i) => i.spaceId === space.id)
+  const sheets = myStock.filter((i) => i.kind === 'chapa').reduce((a, i) => a + Number(i.qty), 0)
+  const lowStock = myStock.filter(isLowStock)
+  const summaryText = () => weeklySummary(space, entries, jobs, stockItems, today)
+  const summaryLink = () => whatsappLink(prefs.reportPhone, summaryText()) ?? `https://wa.me/?text=${encodeURIComponent(summaryText())}`
   const isNew = !mine.length && !myWallets.length && !recurrings.some((r) => r.spaceId === space.id)
   const money = hidden ? () => 'R$ ••••' : formatCurrency
 
@@ -104,6 +119,14 @@ export default function SpaceHome() {
         actions={
           <>
             <MonthPicker value={ym} onChange={setYm} />
+            <Button
+              variant="outline"
+              icon={<MessageCircle className="size-4" />}
+              onClick={() => window.open(summaryLink(), '_blank', 'noopener')}
+              title={prefs.reportPhone ? 'Abre o WhatsApp com o resumo da semana pronto' : 'Dica: cadastre o WhatsApp de quem recebe em Personalizar → Dados da empresa'}
+            >
+              Mandar resumo
+            </Button>
             {hasOther && !readOnly && (
               <Button variant="outline" icon={<HandCoins className="size-4" />} onClick={() => openTransfer('espacos')}>
                 Meu pagamento
@@ -226,6 +249,32 @@ export default function SpaceHome() {
           />
         )}
       </div>
+
+      {space.kind === 'empresa' && (
+        <div className="mt-3 grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <Stat
+            label="Para fechar"
+            value={quotes.length}
+            hint={<><Money value={quotes.reduce((a, j) => a + Number(j.value), 0)} /> em orçamentos</>}
+            to={`${base}/servicos`}
+          />
+          <Stat label="Em produção" value={inProgress.length} hint={`${inProgress.length === 1 ? 'serviço' : 'serviços'} para entregar`} to={`${base}/servicos`} />
+          <Stat
+            label="Entregas na semana"
+            value={weekDeliveries.length}
+            hint={lateDeliveries.length ? <span className="text-danger">{lateDeliveries.length} atrasada(s)</span> : 'ver na agenda'}
+            to={`${base}/agenda`}
+            className={lateDeliveries.length ? 'border-danger/30' : ''}
+          />
+          <Stat
+            label="Chapas em estoque"
+            value={sheets.toLocaleString('pt-BR')}
+            hint={lowStock.length ? <span className="text-danger">{lowStock.length} item(ns) acabando</span> : myStock.length ? 'estoque em dia' : 'cadastre o estoque'}
+            to={`${base}/estoque`}
+            className={lowStock.length ? 'border-danger/30' : ''}
+          />
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         <Card className="overflow-hidden lg:col-span-3">

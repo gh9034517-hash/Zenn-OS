@@ -31,7 +31,14 @@ dá para renomear e criar outros em Configurações → Espaços). Cada espaço 
 - **Relatório**: lucro por categoria, mês ou ano, comparação com o período anterior, PDF
 - **Lembretes**
 - **Meu pagamento**: vira despesa no Trabalho e entrada no Pessoal de uma vez
-- **Serviços** (espaços de empresa): móveis e fretes do orçamento à entrega — sinal, pagamento, custos e lucro de cada um
+- **Quadro de serviços** (espaços de empresa): mini Trello com Para fechar → Aprovado → Em produção → Entregue,
+  checklist por cartão, sinal, pagamento, custos, lucro, material do estoque, orçamento e recibo para imprimir
+- **Clientes**: montados a partir dos serviços — quem está para fechar, quem tem serviço em andamento e quem deve,
+  com mensagem pronta no WhatsApp
+- **Estoque**: chapas, fitas e ferragens com + / −, compra (vira despesa), uso em serviço, contagem, alerta de
+  estoque baixo e pedido ao fornecedor pelo WhatsApp
+- **Agenda**: entregas, contas e lembretes dia a dia
+- **Mandar resumo**: resumo da semana pronto para o WhatsApp de quem é dono do negócio
 
 ## Calculadoras
 

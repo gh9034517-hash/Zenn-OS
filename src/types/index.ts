@@ -251,6 +251,45 @@ export interface Job extends BaseRecord {
   deadline: string | null
   status: JobStatus
   notes: string
+  /** etapas do cartão no quadro (cortar, montar, entregar...) */
+  checklist: ChecklistItem[]
+}
+
+export interface ChecklistItem {
+  id: string
+  text: string
+  done: boolean
+}
+
+export type StockKind = 'chapa' | 'fita' | 'ferragem' | 'outro'
+
+/** Item do estoque: chapa, fita de borda, ferragem... qty é o saldo atual. */
+export interface StockItem extends BaseRecord {
+  spaceId: string
+  name: string
+  kind: StockKind
+  /** un, m, cx, kg... */
+  unit: string
+  qty: number
+  /** abaixo disso aparece o alerta de estoque baixo */
+  minQty: number
+  unitCost: number
+  supplier: string
+  supplierPhone: string | null
+  notes: string
+}
+
+export type StockReason = 'compra' | 'uso' | 'ajuste' | 'perda'
+
+/** Entrada (+) ou saída (−) do estoque. */
+export interface StockMove extends BaseRecord {
+  spaceId: string
+  itemId: string
+  delta: number
+  reason: StockReason
+  jobId: string | null
+  date: string
+  note: string
 }
 
 export interface Collections {
@@ -269,6 +308,8 @@ export interface Collections {
   goals: Goal
   reminders: Reminder
   jobs: Job
+  stock_items: StockItem
+  stock_moves: StockMove
 }
 
 export type CollectionName = keyof Collections

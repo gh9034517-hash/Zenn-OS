@@ -15,7 +15,7 @@ import {
   recurringHorizon,
   splitInstallments,
 } from '@/services/spaceMath'
-import type { Budget, CollectionName, Collections, Entry, Goal, Job, Recurring, Reminder, Space, Wallet } from '@/types'
+import type { Budget, CollectionName, Collections, Entry, Goal, Job, Recurring, Reminder, Space, StockItem, StockMove, StockReason, Wallet } from '@/types'
 
 interface SpacesSnapshot {
   spaces: Space[]
@@ -26,10 +26,24 @@ interface SpacesSnapshot {
   goals: Goal[]
   reminders: Reminder[]
   jobs: Job[]
+  stockItems: StockItem[]
+  stockMoves: StockMove[]
 }
 
-const EMPTY: SpacesSnapshot = { spaces: [], wallets: [], entries: [], recurrings: [], budgets: [], goals: [], reminders: [], jobs: [] }
-const SPACE_COLLECTIONS = ['wallets', 'entries', 'recurrings', 'budgets', 'goals', 'reminders', 'jobs'] as const
+const EMPTY: SpacesSnapshot = {
+  spaces: [],
+  wallets: [],
+  entries: [],
+  recurrings: [],
+  budgets: [],
+  goals: [],
+  reminders: [],
+  jobs: [],
+  stockItems: [],
+  stockMoves: [],
+}
+// Ordem importa ao apagar um espaço no modo local (movimentos antes dos itens).
+const SPACE_COLLECTIONS = ['stock_moves', 'stock_items', 'wallets', 'entries', 'recurrings', 'budgets', 'goals', 'reminders', 'jobs'] as const
 
 const DEFAULT_SPACES: NewRecord<Space>[] = [
   { id: 'pessoal', name: 'Pessoal', kind: 'pessoal', position: 1 },
@@ -51,7 +65,7 @@ const PREFIX: Record<CollectionName, string> = {
   budgets: 'bud',
   goals: 'gol',
   reminders: 'rem',
-  jobs: 'job',
+  jobs: 'job', stock_items: 'stk', stock_moves: 'mov',
 }
 
 const insert = <K extends CollectionName>(c: K, data: NewRecord<Collections[K]>) =>
@@ -136,12 +150,20 @@ interface SpacesContextValue extends SpacesSnapshot {
   updateJob: (id: string, patch: Partial<Job>) => Promise<void>
   /** apaga o serviço; os lançamentos ficam, só perdem o vínculo */
   deleteJob: (id: string) => Promise<void>
+
+  createStockItem: (data: NewRecord<StockItem>) => Promise<StockItem>
+  updateStockItem: (id: string, patch: Partial<StockItem>) => Promise<void>
+  deleteStockItem: (id: string) => Promise<void>
+  /** entrada (+) ou saída (−): registra o movimento e atualiza o saldo */
+  moveStock: (input: { itemId: string; delta: number; reason: StockReason; jobId?: string | null; note?: string; date?: string }) => Promise<void>
+  /** desfaz um movimento (o saldo volta) */
+  undoStockMove: (id: string) => Promise<void>
 }
 
 const SpacesContext = createContext<SpacesContextValue | null>(null)
 
 async function loadSnapshot(): Promise<SpacesSnapshot> {
-  const [spaces, wallets, entries, recurrings, budgets, goals, reminders, jobs] = await Promise.all([
+  const [spaces, wallets, entries, recurrings, budgets, goals, reminders, jobs, stockItems, stockMoves] = await Promise.all([
     provider.list('spaces'),
     provider.list('wallets'),
     provider.list('entries'),
@@ -150,6 +172,8 @@ async function loadSnapshot(): Promise<SpacesSnapshot> {
     provider.list('goals'),
     provider.list('reminders'),
     provider.list('jobs'),
+    provider.list('stock_items'),
+    provider.list('stock_moves'),
   ])
   return {
     spaces: spaces.sort(byPosition),
@@ -159,7 +183,11 @@ async function loadSnapshot(): Promise<SpacesSnapshot> {
     budgets,
     goals: goals.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     reminders: reminders.sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999')),
-    jobs: jobs.sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    jobs: jobs
+      .map((j) => ({ ...j, checklist: Array.isArray(j.checklist) ? j.checklist : [] }))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    stockItems: stockItems.sort((a, b) => a.kind.localeCompare(b.kind) || a.name.localeCompare(b.name)),
+    stockMoves: stockMoves.sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
   }
 }
 
@@ -513,11 +541,50 @@ export function SpacesProvider({ children }: { children: ReactNode }) {
 
       createJob: withRefresh((data: NewRecord<Job>) => insert('jobs', data)),
       updateJob: withRefresh(async (id: string, patch: Partial<Job>) => {
+        // Mostra na hora (arrastar no quadro, marcar checklist) e grava em seguida.
+        setSnap((s) => ({ ...s, jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)) }))
         await provider.update('jobs', id, patch)
       }),
       deleteJob: withRefresh(async (id: string) => {
         for (const e of (await entriesNow()).filter((e) => e.jobId === id)) await provider.update('entries', e.id, { jobId: null })
+        for (const m of (await provider.list('stock_moves')).filter((m) => m.jobId === id)) await provider.update('stock_moves', m.id, { jobId: null })
         await provider.remove('jobs', id)
+      }),
+
+      createStockItem: withRefresh(async (data: NewRecord<StockItem>) => {
+        const item = await insert('stock_items', data)
+        if (Number(item.qty) !== 0) {
+          await insert('stock_moves', {
+            spaceId: item.spaceId,
+            itemId: item.id,
+            delta: Number(item.qty),
+            reason: 'ajuste',
+            jobId: null,
+            date: localISO(),
+            note: 'Saldo inicial',
+          })
+        }
+        return item
+      }),
+      updateStockItem: withRefresh(async (id: string, patch: Partial<StockItem>) => {
+        await provider.update('stock_items', id, patch)
+      }),
+      deleteStockItem: withRefresh(async (id: string) => {
+        for (const m of (await provider.list('stock_moves')).filter((m) => m.itemId === id)) await provider.remove('stock_moves', m.id)
+        await provider.remove('stock_items', id)
+      }),
+      moveStock: withRefresh(async ({ itemId, delta, reason, jobId = null, note = '', date = localISO() }) => {
+        const item = (await provider.list('stock_items')).find((i) => i.id === itemId)
+        if (!item) throw new Error('Item do estoque não encontrado')
+        await insert('stock_moves', { spaceId: item.spaceId, itemId, delta, reason, jobId, date, note })
+        await provider.update('stock_items', itemId, { qty: Math.round((Number(item.qty) + delta) * 100) / 100 })
+      }),
+      undoStockMove: withRefresh(async (id: string) => {
+        const move = (await provider.list('stock_moves')).find((m) => m.id === id)
+        if (!move) return
+        const item = (await provider.list('stock_items')).find((i) => i.id === move.itemId)
+        if (item) await provider.update('stock_items', item.id, { qty: Math.round((Number(item.qty) - Number(move.delta)) * 100) / 100 })
+        await provider.remove('stock_moves', id)
       }),
     }
   }, [snap, loading, error, refresh])
