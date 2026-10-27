@@ -1,0 +1,40 @@
+name: Publicar site
+
+on:
+  push:
+    branches: [claude/zenn-os-build-g2subh]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Montar o site
+        run: npx vite build --base=/Zenn-OS/
+        env:
+          VITE_DATA_PROVIDER: supabase
+          SUPABASE_URL: https://ctylvrexmzpbejytkbmo.supabase.co
+          SUPABASE_ANON_KEY: sb_publishable_tHAEdJMdHwuGTn-sY7FIYQ_S3s0kxQq
+
+      - name: Publicar na branch gh-pages
+        run: |
+          cd dist
+          touch .nojekyll
+          git init -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Publica o site"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" gh-pages
