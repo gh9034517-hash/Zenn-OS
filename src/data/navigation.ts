@@ -52,7 +52,13 @@ export const NAVIGATION: NavGroup[] = [
   { label: 'Analytics', items: [{ to: '/analytics', label: 'Analytics', icon: BarChart3 }] },
 ]
 
-export const TOOLS_NAV: NavGroup = { label: 'Ferramentas', items: [{ to: '/calculadoras', label: 'Calculadoras', icon: Calculator }] }
+export const TOOLS_NAV: NavGroup = {
+  label: 'Ferramentas',
+  items: [
+    { to: '/calculadoras', label: 'Calculadoras', icon: Calculator },
+    { to: '/fretes', label: 'Fretes de chapa', icon: Package },
+  ],
+}
 
 export const SYSTEM_NAV: NavGroup = {
   label: 'Sistema',
