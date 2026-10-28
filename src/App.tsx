@@ -31,6 +31,7 @@ const SpaceClients = lazy(() => import('@/pages/space/SpaceClients'))
 const SpaceStock = lazy(() => import('@/pages/space/SpaceStock'))
 const SpaceAgenda = lazy(() => import('@/pages/space/SpaceAgenda'))
 const Calculators = lazy(() => import('@/pages/Calculators'))
+const Fretes = lazy(() => import('@/pages/Fretes'))
 const Customize = lazy(() => import('@/pages/Customize'))
 
 export default function App() {
@@ -52,6 +53,7 @@ export default function App() {
         <Route path="inicio" element={<HomeRedirect />} />
         <Route path="geral" element={<Overview />} />
         <Route path="calculadoras" element={<Calculators />} />
+        <Route path="fretes" element={<Fretes />} />
         <Route path="personalizar" element={<Customize />} />
         <Route path="e/:spaceId" element={<SpaceLayout />}>
           <Route index element={<SpaceHome />} />
